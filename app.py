@@ -105,20 +105,23 @@ if species_list is not None:
         list(homosynonyms.items()),
         columns=["Original Name", "Homosynonym in AGORA2"],
     )
-    st.dataframe(species_df)
-    st.dataframe(homosynonyms_df)
+
+    col1, col2 = st.columns(2)
+
+    col1.dataframe(species_df)
+    col2.dataframe(homosynonyms_df, hide_index=True)
 
     st.divider()
 
-    # Let the user choose the file format
-    file_format = st.selectbox("Select file format", ["csv", "txt", "xlsx"])
-
-    # Convert the DataFrame to base64
-    species = convert_df(species_df, file_format)
-    homosynonyms = convert_df(homosynonyms_df, file_format)
-
     # Create two columns
     col1, col2 = st.columns(2)
+
+    # Let the user choose the file format
+    file_format = col2.selectbox("Select file format", ["csv", "txt", "xlsx"])
+
+    # Convert the DataFrame to downloadable
+    species = convert_df(species_df, file_format)
+    homosynonyms = convert_df(homosynonyms_df, file_format)
 
     # Create the download button
     col1.download_button(
@@ -126,11 +129,13 @@ if species_list is not None:
         data=species,
         file_name=f"species.{file_format}",
         mime=f"text/{file_format}",
+        disabled=species_df.empty,
     )
 
-    col2.download_button(
+    col1.download_button(
         label="Download Homosynonyms",
         data=homosynonyms,
         file_name=f"homosynonyms.{file_format}",
         mime=f"text/{file_format}",
+        disabled=homosynonyms_df.empty,
     )
