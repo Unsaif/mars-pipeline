@@ -76,7 +76,7 @@ For convenience, these results can be downloaded in your preferred file format f
 
 # Let the user upload a file
 uploaded_file = st.file_uploader(
-    "Choose a TXT, CSV or Excel file ([example file](https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi))",
+    "Choose a TXT, CSV or Excel file ([example file](https://gitlab.com/timhunuig/ant/-/raw/master/example.txt))",
     type=["txt", "csv", "xlsx"],
 )
 
