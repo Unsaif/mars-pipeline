@@ -10,6 +10,7 @@ def remove_consecutive_duplicates(lst):
     return new_lst
 
 
+@st.cache_data
 def homosynonym_finder(species_list):
     # Open a pickle file and load it into a variable
     with open("agora2_species.pkl", "rb") as f:
@@ -37,6 +38,7 @@ def homosynonym_finder(species_list):
             progress_text = f"Unable to find Taxonomic ID for {species}"
 
     st.success("Done!")
+    st.divider()
 
     # Start a session
     session = HTMLSession()

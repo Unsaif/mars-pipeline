@@ -1,12 +1,21 @@
 # Import the necessary libraries
 import streamlit as st
 import pandas as pd
-import base64
 from ant import homosynonym_finder
+from io import BytesIO
 
 
 def convert_df(df, file_format):
-    return df.to_csv(index=False).encode("utf-8")
+    if file_format == "xlsx":
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False)
+        data = output.getvalue()
+        return data
+    elif file_format == "txt":
+        return df.to_csv(index=False, sep="\t").encode("utf-8")
+    else:
+        return df.to_csv(index=False).encode("utf-8")
 
 
 def file_to_list(uploaded_file):
@@ -51,11 +60,24 @@ def file_to_list(uploaded_file):
 
 
 # Add a title to your Streamlit app
-st.title("ANT - Automated NCBI Taxonomy browser")
+st.title(":ant: ANT - Automated NCBI Taxonomy")
+
+st.write(
+    f"""
+
+ANT is a tool developed to simplify and automate the process of mapping species to the [AGORA2 resource](https://www.nature.com/articles/s41587-022-01628-0). Leveraging web scraping techniques, 
+ANT automates the search for species homosynonyms (alternative taxonomic names) in the [NCBI Taxonomy Browser](https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi).
+
+The results, which include all species present in AGORA2 and those that have homosynonyms in AGORA2, are displayed. 
+For convenience, these results can be downloaded in your preferred file format for further use.
+
+"""
+)
 
 # Let the user upload a file
 uploaded_file = st.file_uploader(
-    "Choose a TXT, CSV or Excel file", type=["txt", "csv", "xlsx"]
+    "Choose a TXT, CSV or Excel file ([example file](https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi))",
+    type=["txt", "csv", "xlsx"],
 )
 
 # Convert the uploaded file to a list
@@ -66,6 +88,16 @@ if species_list is not None:
     species_in_agora2, homosynonyms = homosynonym_finder(species_list)
     st.success("Done!")
 
+    st.divider()
+
+    # Create two columns
+    col1, col2 = st.columns(2)
+
+    col1.metric("Number of species found in AGORA2", len(species_in_agora2))
+    col2.metric("Number of homosynonyms found in AGORA2", len(homosynonyms))
+
+    st.divider()
+
     species_df = pd.DataFrame(species_in_agora2, columns=["Species in AGORA2"])
     homosynonyms_df = pd.DataFrame(
         list(homosynonyms.items()),
@@ -74,30 +106,29 @@ if species_list is not None:
     st.dataframe(species_df)
     st.dataframe(homosynonyms_df)
 
+    st.divider()
+
     # Let the user choose the file format
-    file_format = st.selectbox("Select file format", ["csv", "xlsx"])
+    file_format = st.selectbox("Select file format", ["csv", "txt", "xlsx"])
 
     # Convert the DataFrame to base64
-    b64_species = convert_df(species_df, file_format)
-    b64_homosynonyms = convert_df(homosynonyms_df, file_format)
+    species = convert_df(species_df, file_format)
+    homosynonyms = convert_df(homosynonyms_df, file_format)
 
     # Create two columns
     col1, col2 = st.columns(2)
 
     # Create the download button
-    with col1:
-        st.download_button(
-            label="Download Species",
-            data=b64_species,
-            file_name=f"data.{file_format}",
-            mime=f"text/{file_format}",
-        )
+    col1.download_button(
+        label="Download Species",
+        data=species,
+        file_name=f"species.{file_format}",
+        mime=f"text/{file_format}",
+    )
 
-    with col2:
-        # Create the download button
-        st.download_button(
-            label="Download Homosynonyms",
-            data=b64_homosynonyms,
-            file_name=f"data.{file_format}",
-            mime=f"text/{file_format}",
-        )
+    col2.download_button(
+        label="Download Homosynonyms",
+        data=homosynonyms,
+        file_name=f"homosynonyms.{file_format}",
+        mime=f"text/{file_format}",
+    )
