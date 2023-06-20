@@ -43,7 +43,7 @@ def file_to_list(uploaded_file):
             except Exception as e:
                 st.write("Could not read file: ", e)
                 return None
-        elif "excel" in uploaded_file.type:
+        elif "spreadsheet" in uploaded_file.type:
             try:
                 df = pd.read_excel(uploaded_file)
                 # Assuming the species names are in the first column
@@ -82,6 +82,8 @@ uploaded_file = st.file_uploader(
 
 # Convert the uploaded file to a list
 species_list = file_to_list(uploaded_file)
+
+st.divider()
 
 # If the species list is not empty, find homosynonyms
 if species_list is not None:
