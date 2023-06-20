@@ -11,7 +11,7 @@ def remove_consecutive_duplicates(lst):
 
 
 @st.cache_data
-def homosynonym_finder(species_list):
+def ant(species_list):
     # Open a pickle file and load it into a variable
     with open("agora2_species.pkl", "rb") as f:
         agora2_species = pickle.load(f)

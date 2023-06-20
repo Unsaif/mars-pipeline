@@ -1,7 +1,7 @@
 # Import the necessary libraries
 import streamlit as st
 import pandas as pd
-from ant import homosynonym_finder
+from ant import ant
 from io import BytesIO
 
 
@@ -85,7 +85,7 @@ species_list = file_to_list(uploaded_file)
 
 # If the species list is not empty, find homosynonyms
 if species_list is not None:
-    species_in_agora2, homosynonyms = homosynonym_finder(species_list)
+    species_in_agora2, homosynonyms = ant(species_list)
     st.success("Done!")
 
     st.divider()
