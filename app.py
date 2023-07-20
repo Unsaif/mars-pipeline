@@ -4,6 +4,8 @@ import pandas as pd
 from ant import ant
 from io import BytesIO
 
+# st.set_page_config(layout="wide")
+
 
 def convert_df(df, file_format):
     if file_format == "xlsx":
@@ -102,6 +104,7 @@ st.divider()
 
 if species_list is not None:
     if st.button("Start ANT"):
+        st.divider()
         species_in_resource, homosynonyms, ncbi_tax_id, all_found_homosynoyms = ant(
             species_list, resource
         )
@@ -130,61 +133,163 @@ if species_list is not None:
             columns=["Species", "All Found Homosynonymns"],
         )
 
-        col1, col2 = st.columns(2)
+        tab1, tab2, tab3, tab4 = st.tabs(
+            [
+                "Species in Resource",
+                "Homosynonyms in Resource",
+                "NCBI Taxonomic IDs",
+                "All Found Homosynonyms",
+            ]
+        )
 
-        col1.dataframe(species_df)
-        col2.dataframe(homosynonyms_df, hide_index=True)
+        with tab1:
+            col1, col2 = st.columns(2)
+            col1.dataframe(species_df, use_container_width=True)
 
-        st.divider()
+            # Let the user choose the file format
+            file_format = col2.selectbox(
+                "Select file format", ["csv", "txt", "xlsx"], key="tab1"
+            )
 
-        col1, col2 = st.columns(2)
+            # Convert the DataFrame to downloadable
+            species = convert_df(species_df, file_format)
 
-        col1.dataframe(ncbi_tax_id_df, hide_index=False)
-        col2.dataframe(all_found_homosynoyms_df, hide_index=True)
+            # Create the download button
+            col2.download_button(
+                label="Download Species",
+                data=species,
+                file_name=f"species.{file_format}",
+                mime=f"text/{file_format}",
+                disabled=species_df.empty,
+            )
+        with tab2:
+            col1, col2 = st.columns(2)
+            col1.dataframe(
+                homosynonyms_df,
+                hide_index=True,
+                use_container_width=True,
+            )
 
-        st.divider()
+            # Let the user choose the file format
+            file_format = col2.selectbox(
+                "Select file format", ["csv", "txt", "xlsx"], key="tab2"
+            )
+
+            # Convert the DataFrame to downloadable
+            homosynonyms = convert_df(homosynonyms_df, file_format)
+
+            # Create the download button
+            col2.download_button(
+                label="Download Homosynonyms",
+                data=homosynonyms,
+                file_name=f"homosynonyms.{file_format}",
+                mime=f"text/{file_format}",
+                disabled=homosynonyms_df.empty,
+            )
+        with tab3:
+            col1, col2 = st.columns(2)
+            col1.dataframe(
+                ncbi_tax_id_df,
+                hide_index=False,
+                use_container_width=True,
+            )
+
+            # Let the user choose the file format
+            file_format = col2.selectbox(
+                "Select file format", ["csv", "txt", "xlsx"], key="tab3"
+            )
+
+            # Convert the DataFrame to downloadable
+            ncbi_tax_ids = convert_df(ncbi_tax_id_df, file_format)
+
+            # Create the download button
+            col2.download_button(
+                label="Download NCBI Tax IDs",
+                data=ncbi_tax_ids,
+                file_name=f"ncbi_tax_ids.{file_format}",
+                mime=f"text/{file_format}",
+                disabled=ncbi_tax_id_df.empty,
+            )
+        with tab4:
+            col1, col2 = st.columns(2)
+            col1.dataframe(
+                all_found_homosynoyms_df,
+                hide_index=True,
+                use_container_width=True,
+            )
+
+            # Let the user choose the file format
+            file_format = col2.selectbox(
+                "Select file format", ["csv", "txt", "xlsx"], key="tab4"
+            )
+
+            # Convert the DataFrame to downloadable
+            all_found_homosynoyms = convert_df(all_found_homosynoyms_df, file_format)
+
+            # Create the download button
+            col2.download_button(
+                label="Download All Found Homosynonyms",
+                data=all_found_homosynoyms,
+                file_name=f"all_found_homosynonyms.{file_format}",
+                mime=f"text/{file_format}",
+                disabled=all_found_homosynoyms_df.empty,
+            )
+
+        # col1, col2 = st.columns(2)
+
+        # col1.dataframe(species_df)
+        # col2.dataframe(homosynonyms_df, hide_index=True)
+
+        # st.divider()
+
+        # col1, col2 = st.columns(2)
+
+        # col1.dataframe(ncbi_tax_id_df, hide_index=False)
+        # col2.dataframe(all_found_homosynoyms_df, hide_index=True)
+
+        # st.divider()
 
         # Create two columns
-        col1, col2 = st.columns(2)
+        # col1, col2 = st.columns(2)
 
-        # Let the user choose the file format
-        file_format = col2.selectbox("Select file format", ["csv", "txt", "xlsx"])
+        # # Let the user choose the file format
+        # file_format = col2.selectbox("Select file format", ["csv", "txt", "xlsx"])
 
-        # Convert the DataFrame to downloadable
-        species = convert_df(species_df, file_format)
-        homosynonyms = convert_df(homosynonyms_df, file_format)
-        ncbi_tax_ids = convert_df(ncbi_tax_id_df, file_format)
-        all_found_homosynoyms = convert_df(all_found_homosynoyms_df, file_format)
+        # # Convert the DataFrame to downloadable
+        # species = convert_df(species_df, file_format)
+        # homosynonyms = convert_df(homosynonyms_df, file_format)
+        # ncbi_tax_ids = convert_df(ncbi_tax_id_df, file_format)
+        # all_found_homosynoyms = convert_df(all_found_homosynoyms_df, file_format)
 
-        # Create the download button
-        col1.download_button(
-            label="Download Species",
-            data=species,
-            file_name=f"species.{file_format}",
-            mime=f"text/{file_format}",
-            disabled=species_df.empty,
-        )
+        # # Create the download button
+        # col1.download_button(
+        #     label="Download Species",
+        #     data=species,
+        #     file_name=f"species.{file_format}",
+        #     mime=f"text/{file_format}",
+        #     disabled=species_df.empty,
+        # )
 
-        col1.download_button(
-            label="Download Homosynonyms",
-            data=homosynonyms,
-            file_name=f"homosynonyms.{file_format}",
-            mime=f"text/{file_format}",
-            disabled=homosynonyms_df.empty,
-        )
+        # col1.download_button(
+        #     label="Download Homosynonyms",
+        #     data=homosynonyms,
+        #     file_name=f"homosynonyms.{file_format}",
+        #     mime=f"text/{file_format}",
+        #     disabled=homosynonyms_df.empty,
+        # )
 
-        col1.download_button(
-            label="Download NCBI Tax IDs",
-            data=ncbi_tax_ids,
-            file_name=f"ncbi_tax_ids.{file_format}",
-            mime=f"text/{file_format}",
-            disabled=ncbi_tax_id_df.empty,
-        )
+        # col1.download_button(
+        #     label="Download NCBI Tax IDs",
+        #     data=ncbi_tax_ids,
+        #     file_name=f"ncbi_tax_ids.{file_format}",
+        #     mime=f"text/{file_format}",
+        #     disabled=ncbi_tax_id_df.empty,
+        # )
 
-        col1.download_button(
-            label="Download All Found Homosynonyms",
-            data=all_found_homosynoyms,
-            file_name=f"all_found_homosynonyms.{file_format}",
-            mime=f"text/{file_format}",
-            disabled=all_found_homosynoyms_df.empty,
-        )
+        # col1.download_button(
+        #     label="Download All Found Homosynonyms",
+        #     data=all_found_homosynoyms,
+        #     file_name=f"all_found_homosynonyms.{file_format}",
+        #     mime=f"text/{file_format}",
+        #     disabled=all_found_homosynoyms_df.empty,
+        # )
