@@ -11,10 +11,11 @@ def remove_consecutive_duplicates(lst):
 
 
 @st.cache_data
-def ant(species_list):
-    # Open a pickle file and load it into a variable
-    with open("agora2_species.pkl", "rb") as f:
-        agora2_species = pickle.load(f)
+def ant(species_list, resource):
+    if resource is None:
+        # Open a pickle file and load it into a variable
+        with open("agora2_species.pkl", "rb") as f:
+            resource = pickle.load(f)
 
     # Initialize an empty dictionary to store species and their Tax IDs
     taxid_dic = {}
@@ -43,21 +44,23 @@ def ant(species_list):
     # Start a session
     session = HTMLSession()
 
-    st.info("Finding potential homosynonyms and mapping to AGORA2 resource..")
+    st.info("Finding potential homosynonyms and mapping to resource..")
 
     progress_text = "Operation in progress. Please wait."
     bar_2 = st.progress(0)
 
-    # Initialize lists to store species that are already in Agora2 and homosynonyms found in Agora2
-    already_in_agora2 = []
-    homosynonym_in_agora2 = {}
+    # Initialize lists to store species that are already in resource and homosynonyms found in resource
+    already_in_resource = []
+    homosynonym_in_resource = {}
+    found_homosynonyms = {}
 
     # For each species and its corresponding Tax ID in the dictionary
-    for i, (species, taxid) in enumerate(taxid_dic.items()):
-        length = len(taxid_dic)
+    for i, species in enumerate(species_list):
+        length = len(species_list)
         progress = round(((i + 1) / length) * 100)
         bar_2.progress(progress, text=f"Processing {species}..")
         try:
+            taxid = taxid_dic[species]
             # Send a GET request to the NCBI Taxonomy Browser
             r = session.get(
                 f"https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?mode=Info&id={taxid}"
@@ -92,27 +95,31 @@ def ant(species_list):
                 # Initialize a new list to store refined homosynonyms
                 refined_potential_homosynonyms = []
                 for homosynonym in potential_homosynonyms:
-                    if homosynonym != species.strip():
+                    if homosynonym.strip() != species.strip():
                         # Only add to the list if the homosynonym is not equal to the original species
                         refined_potential_homosynonyms.append(homosynonym)
 
             # Remove duplicates from the list of refined potential homosynonyms
             refined_potential_homosynonyms = list(set(refined_potential_homosynonyms))
+            if len(refined_potential_homosynonyms) != 0:
+                found_homosynonyms[species] = refined_potential_homosynonyms
 
-            # Check if the species is not in Agora2
-            if species not in agora2_species:
+            # Check if the species is not in resource
+            if species not in resource:
                 if refined_potential_homosynonyms:
-                    # For each homosynonym, check if it's in Agora2
+                    # For each homosynonym, check if it's in resource
                     for homosynonym in refined_potential_homosynonyms:
-                        if homosynonym in agora2_species:
-                            # If it is, add to the dictionary of homosynonyms in Agora2
-                            homosynonym_in_agora2[species] = homosynonym
+                        if homosynonym in resource:
+                            # If it is, add to the dictionary of homosynonyms in resource
+                            homosynonym_in_resource[species] = homosynonym
             else:
-                # If the species is already in Agora2, add it to the corresponding list
-                already_in_agora2.append(species)
+                # If the species is already in resource, add it to the corresponding list
+                already_in_resource.append(species)
         except Exception as e:
             print(e)
-            continue
+            if species in resource:
+                already_in_resource.append(species)
+            else:
+                continue
 
-        # Return the list and dictionary
-    return already_in_agora2, homosynonym_in_agora2
+    return already_in_resource, homosynonym_in_resource, taxid_dic, found_homosynonyms

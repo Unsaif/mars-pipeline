@@ -62,80 +62,129 @@ def file_to_list(uploaded_file):
 # Add a title to your Streamlit app
 st.title(":ant: ANT - Automated NCBI Taxonomy")
 
-st.write(
+st.markdown(
     f"""
 
-ANT is a tool developed to simplify and automate the process of mapping species to the [AGORA2 resource](https://www.nature.com/articles/s41587-022-01628-0). Leveraging web scraping techniques, 
-ANT automates the search for species homosynonyms (alternative taxonomic names) in the [NCBI Taxonomy Browser](https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi).
+##### ANT is a dynamic tool designed to simplify and automate the process of mapping species to a resource selected by the user or the default [AGORA2 resource](https://www.nature.com/articles/s41587-022-01628-0). 
 
-The results, which include all species present in AGORA2 and those that have homosynonyms in AGORA2, are displayed. 
-For convenience, these results can be downloaded in your preferred file format for further use.
+###### By applying reliable web scraping techniques, ANT automates the search for species homosynonyms (alternative taxonomic names) within the [NCBI Taxonomy Browser](https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi).
 
+This app generates comprehensive results, which include:
+- All species present in the resource
+- Those with recognized homosynonyms in the resource
+- The identified NCBI taxonomic IDs
+- All discovered homosynonyms
+
+For the user's convenience, these results can be downloaded in your chosen file format, facilitating further exploration and analysis.
 """
 )
 
+# Create two columns
+col1, col2 = st.columns(2)
+
 # Let the user upload a file
-uploaded_file = st.file_uploader(
+uploaded_file = col1.file_uploader(
     "Choose a TXT, CSV or Excel file ([example file](https://gitlab.com/timhunuig/ant/-/raw/master/example.txt))",
+    type=["txt", "csv", "xlsx"],
+)
+uploaded_resource_file = col2.file_uploader(
+    "(Optional) Upload your own resource file",
     type=["txt", "csv", "xlsx"],
 )
 
 # Convert the uploaded file to a list
 species_list = file_to_list(uploaded_file)
+resource = file_to_list(uploaded_resource_file)
 
 st.divider()
 
 # If the species list is not empty, find homosynonyms
+
 if species_list is not None:
-    species_in_agora2, homosynonyms = ant(species_list)
-    st.success("Done!")
+    if st.button("Start ANT"):
+        species_in_resource, homosynonyms, ncbi_tax_id, all_found_homosynoyms = ant(
+            species_list, resource
+        )
+        st.success("Done!")
 
-    st.divider()
+        st.divider()
 
-    # Create two columns
-    col1, col2 = st.columns(2)
+        # Create two columns
+        col1, col2 = st.columns(2)
 
-    col1.metric("Number of species found in AGORA2", len(species_in_agora2))
-    col2.metric("Number of homosynonyms found in AGORA2", len(homosynonyms))
+        col1.metric("Number of species found in resource", len(species_in_resource))
+        col2.metric("Number of homosynonyms found in resource", len(homosynonyms))
 
-    st.divider()
+        st.divider()
 
-    species_df = pd.DataFrame(species_in_agora2, columns=["Species in AGORA2"])
-    homosynonyms_df = pd.DataFrame(
-        list(homosynonyms.items()),
-        columns=["Original Name", "Homosynonym in AGORA2"],
-    )
+        species_df = pd.DataFrame(species_in_resource, columns=["Species in Resource"])
+        homosynonyms_df = pd.DataFrame(
+            list(homosynonyms.items()),
+            columns=["Original Name", "Homosynonym in Resource"],
+        )
+        ncbi_tax_id_df = pd.DataFrame(
+            list(ncbi_tax_id.items()), columns=["Species", "NCBI Tax ID"]
+        )
+        all_found_homosynoyms_df = pd.DataFrame(
+            list(all_found_homosynoyms.items()),
+            columns=["Species", "All Found Homosynonymns"],
+        )
 
-    col1, col2 = st.columns(2)
+        col1, col2 = st.columns(2)
 
-    col1.dataframe(species_df)
-    col2.dataframe(homosynonyms_df, hide_index=True)
+        col1.dataframe(species_df)
+        col2.dataframe(homosynonyms_df, hide_index=True)
 
-    st.divider()
+        st.divider()
 
-    # Create two columns
-    col1, col2 = st.columns(2)
+        col1, col2 = st.columns(2)
 
-    # Let the user choose the file format
-    file_format = col2.selectbox("Select file format", ["csv", "txt", "xlsx"])
+        col1.dataframe(ncbi_tax_id_df, hide_index=False)
+        col2.dataframe(all_found_homosynoyms_df, hide_index=True)
 
-    # Convert the DataFrame to downloadable
-    species = convert_df(species_df, file_format)
-    homosynonyms = convert_df(homosynonyms_df, file_format)
+        st.divider()
 
-    # Create the download button
-    col1.download_button(
-        label="Download Species",
-        data=species,
-        file_name=f"species.{file_format}",
-        mime=f"text/{file_format}",
-        disabled=species_df.empty,
-    )
+        # Create two columns
+        col1, col2 = st.columns(2)
 
-    col1.download_button(
-        label="Download Homosynonyms",
-        data=homosynonyms,
-        file_name=f"homosynonyms.{file_format}",
-        mime=f"text/{file_format}",
-        disabled=homosynonyms_df.empty,
-    )
+        # Let the user choose the file format
+        file_format = col2.selectbox("Select file format", ["csv", "txt", "xlsx"])
+
+        # Convert the DataFrame to downloadable
+        species = convert_df(species_df, file_format)
+        homosynonyms = convert_df(homosynonyms_df, file_format)
+        ncbi_tax_ids = convert_df(ncbi_tax_id_df, file_format)
+        all_found_homosynoyms = convert_df(all_found_homosynoyms_df, file_format)
+
+        # Create the download button
+        col1.download_button(
+            label="Download Species",
+            data=species,
+            file_name=f"species.{file_format}",
+            mime=f"text/{file_format}",
+            disabled=species_df.empty,
+        )
+
+        col1.download_button(
+            label="Download Homosynonyms",
+            data=homosynonyms,
+            file_name=f"homosynonyms.{file_format}",
+            mime=f"text/{file_format}",
+            disabled=homosynonyms_df.empty,
+        )
+
+        col1.download_button(
+            label="Download NCBI Tax IDs",
+            data=ncbi_tax_ids,
+            file_name=f"ncbi_tax_ids.{file_format}",
+            mime=f"text/{file_format}",
+            disabled=ncbi_tax_id_df.empty,
+        )
+
+        col1.download_button(
+            label="Download All Found Homosynonyms",
+            data=all_found_homosynoyms,
+            file_name=f"all_found_homosynonyms.{file_format}",
+            mime=f"text/{file_format}",
+            disabled=all_found_homosynoyms_df.empty,
+        )
