@@ -87,7 +87,7 @@ output_format = st.sidebar.radio("Output Format", ["csv", "txt", "xlsx"])
 stratification_file = st.sidebar.file_uploader("Stratification File", type=['csv', 'txt', 'xlsx'])
 skip_ant = st.sidebar.checkbox('Skip ANT')
 
-if uploaded_file1 and uploaded_file2:
+if (uploaded_file1 and uploaded_file2) or uploaded_file3:
 
     # When the button is clicked, the function is executed
     if st.button("Process Files"):
