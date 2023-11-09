@@ -1,8 +1,7 @@
 from requests_html import HTMLSession
-from tax_id import get_tax_id
+from ant.ANT.tax_id import get_tax_id
 import pickle
 import streamlit as st
-
 
 def remove_consecutive_duplicates(lst):
     new_lst = [lst[i] for i in range(len(lst) - 1) if lst[i] != lst[i + 1]]
