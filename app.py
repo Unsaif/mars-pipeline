@@ -1,7 +1,7 @@
 # Import the necessary libraries
 import streamlit as st
 import pandas as pd
-from ANT import ant
+from ANT.ant import ant
 from io import BytesIO
 
 st.set_page_config(layout="wide")
@@ -74,7 +74,7 @@ st.write("""
 col1, col2, col3, col4 = st.columns(4)
 uploaded_file1 = col1.file_uploader("Upload Taxonomy Table", type=['csv', 'tsv', 'txt', 'xlsx'])
 uploaded_file2 = col2.file_uploader("Upload Feature Table", type=['csv', 'tsv', 'txt', 'xlsx'])
-uploaded_file2 = col3.file_uploader("Upload Combined Table", type=['csv', 'tsv', 'txt', 'xlsx'])
+uploaded_file3 = col3.file_uploader("Upload Combined Table", type=['csv', 'tsv', 'txt', 'xlsx'])
 uploaded_resource_file = col4.file_uploader(
     "(Optional) Upload your own resource file",
     type=["txt", "csv", "xlsx"],

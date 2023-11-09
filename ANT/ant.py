@@ -13,7 +13,7 @@ def remove_consecutive_duplicates(lst):
 def ant(species_list, resource):
     if resource is None:
         # Open a pickle file and load it into a variable
-        with open("agora2_species.pkl", "rb") as f:
+        with open("./ANT/agora2_species.pkl", "rb") as f:
             resource = pickle.load(f)
 
     # Initialize an empty dictionary to store species and their Tax IDs
