@@ -1,7 +1,7 @@
 # Import the necessary libraries
 import streamlit as st
 import pandas as pd
-from ant.ANT import ant
+from ANT import ant
 from io import BytesIO
 
 st.set_page_config(layout="wide")

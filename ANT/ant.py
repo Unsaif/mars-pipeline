@@ -1,5 +1,5 @@
 from requests_html import HTMLSession
-from ant.ANT.tax_id import get_tax_id
+from ANT.tax_id import get_tax_id
 import pickle
 import streamlit as st
 
