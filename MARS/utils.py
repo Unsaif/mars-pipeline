@@ -1,27 +1,20 @@
 import pandas as pd
 import os
 
-def check_header_line(file_path, column_name='#OTU'):
-    """
-    Check the first two lines of a file for the presence of a specific column name and return the line number.
-
-    Args:
-        file_path (str): The file path of the input file.
-        column_name (str): The name of the column to search for.
-
-    Returns:
-        int: The line number containing the column name or None if not found.
-    """
-    with open(file_path, 'r') as f:
-        first_line = f.readline().strip()
-        second_line = f.readline().strip()
-
-    if column_name in first_line:
-        return 0
-    elif column_name in second_line:
-        return 1
+def read_file_as_dataframe(file_path, header):
+    # Extract the file extension
+    file_extension = file_path.type
+    
+    # Read the file based on its extension
+    if file_extension == 'text/plain' or file_extension == 'text/tab-separated-values':
+        # Assuming the txt file is delimited (e.g., CSV)
+        return pd.read_csv(file_path, sep='\t', index_col=[0], low_memory=False, header=header)  # Update delimiter if necessary
+    elif file_extension == 'text/csv':
+        return pd.read_csv(file_path, index_col=[0], low_memory=False, header=header)
+    elif file_extension == 'spreadsheet':
+        return pd.read_excel(file_path, engine='openpyxl', index_col=[0], low_memory=False, header=header)
     else:
-        return None
+        raise ValueError(f"Unsupported file type: {file_extension}")
 
 def merge_files(file_path1, file_path2):
     """
@@ -35,40 +28,9 @@ def merge_files(file_path1, file_path2):
         pd.DataFrame: The merged DataFrame.
     """
 
-    # Determine the header line for each input file
-    header1 = check_header_line(file_path1)
-    header2 = check_header_line(file_path2)
-
-    if header1 is None and header2 is None:
-        raise ValueError("The specified column name could not be found in both input files")
-    else:
-        if header1 is None:
-            header1 = 0
-        elif header2 is None:
-            header2 = 0
-
     # Read input files into pandas DataFrames
-    df1 = pd.read_csv(file_path1, sep='\t', index_col=[0], low_memory=False, header=header1)
-    df2 = pd.read_csv(file_path2, sep='\t', index_col=[0], low_memory=False, header=header2)
-
-    # Merge DataFrames using their index values
-    merged_df = pd.merge(df1, df2, left_index=True, right_index=True, how='inner')
-
-    # Drop the 'Confidence' column
-    merged_df = merged_df.drop(columns=['Confidence'])
-
-    # Replace all level indicators in the 'Taxon' column
-    merged_df['Taxon'] = merged_df['Taxon'].replace(".__", "", regex=True)
-
-    # Reset the index and set the 'Taxon' column as the new index
-    merged_df = merged_df.reset_index(drop=True).set_index('Taxon')
-
-    return merged_df
-
-def merge_files_streamlit(file_path1, file_path2):
-    # Read input files into pandas DataFrames
-    df1 = pd.read_csv(file_path1, sep='\t', index_col=[0], low_memory=False, header=0)
-    df2 = pd.read_csv(file_path2, sep='\t', index_col=[0], low_memory=False, header=1)
+    df1 = read_file_as_dataframe(file_path1, 0)
+    df2 = read_file_as_dataframe(file_path2, 1) 
 
     # Merge DataFrames using their index values
     merged_df = pd.merge(df1, df2, left_index=True, right_index=True, how='inner')

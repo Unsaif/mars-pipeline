@@ -8,7 +8,7 @@ st.set_page_config(layout="wide")
 
 # streamlit_app.py
 
-from MARS.utils import merge_files_streamlit, normalize_dataframes, combine_metrics
+from MARS.utils import read_file_as_dataframe, merge_files, normalize_dataframes, combine_metrics
 from MARS.operations import split_taxonomic_groups, rename_taxa, calculate_metrics, check_presence_in_agora2
 
 def convert_df(df, file_format):
@@ -34,7 +34,7 @@ def file_to_list(uploaded_file):
         }
         st.write(file_details)
 
-        if uploaded_file.type == "text/plain":
+        if uploaded_file.type == "text/plain" or uploaded_file.type == "text/tab-separated-values":
             # For txt files, we simply read each line into a list
             bytes_data = uploaded_file.getvalue()
             str_data = bytes_data.decode("utf-8")
@@ -92,8 +92,12 @@ if (uploaded_file1 and uploaded_file2) or uploaded_file3:
     # When the button is clicked, the function is executed
     if st.button("Process Files"):
         with st.spinner("Merging files..."):
-            merged_dataframe = merge_files_streamlit(uploaded_file1, uploaded_file2)
-        st.success("Merging files: Success!")
+            if uploaded_file3:
+                merged_dataframe = read_file_as_dataframe(uploaded_file3, 0)
+                st.success("Files already merged!")
+            else:
+                merged_dataframe = merge_files(uploaded_file1, uploaded_file2)
+                st.success("Merging files: Success!")
 
         with st.spinner("Splitting taxonomic groups..."):
             taxonomic_dataframes = split_taxonomic_groups(merged_dataframe)
