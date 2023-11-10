@@ -26,13 +26,13 @@ The application accepts input data in specific formats. For MARS, a feature tabl
 - MARS Input: `SI_table_S1.csv`
 - ANT Input: `SI_table_S2.csv`
 
-## Running the Streamlit Application with Docker
+# Running the Streamlit Application with Docker
 
-# Prerequisites
+## Prerequisites
 
 Before proceeding, ensure that you have Docker installed on your system. You can download and install Docker from Docker's official website.
 
-# Steps to Run the Application
+## Steps to Run the Application
 
 1. Build the Docker Image
 First, you need to build a Docker image from your application. Open a terminal or command prompt and navigate to the directory containing your application's Dockerfile.
@@ -57,7 +57,7 @@ Once the container is running, open your web browser and navigate to:
 
 You should now see your Streamlit application running.
 
-# Stopping the Container
+## Stopping the Container
 
 To stop the running Docker container, you can press `CTRL+C` in the terminal where the container is running.
 
