@@ -1,7 +1,7 @@
 # MARS Streamlit Application
 
 ## Overview
-This Streamlit application integrates the functionalities of MARS (Microbiome Abundance and Relative Species) and ANT (Automated NCBI Taxonomy) to provide a comprehensive tool for microbiome researchers. It automates the processing of metagenomic datasets, taxonomic name resolution, and mapping to resources like AGORA2, thereby facilitating a streamlined workflow for microbiome data analysis.
+This Streamlit application integrates the functionalities of MARS (Microbial Abundances Retrieved from Sequencing data) and ANT (Automated NCBI Taxonomy) to provide a comprehensive tool for microbiome researchers. It automates the processing of metagenomic datasets, taxonomic name resolution, and mapping to resources like AGORA2, thereby facilitating a streamlined workflow for microbiome data analysis.
 
 ## Installation
 To run the application on your local machine, you will need to have Python installed, along with the necessary libraries. Follow these steps to get started:
