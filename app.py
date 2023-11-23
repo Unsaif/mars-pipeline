@@ -68,7 +68,9 @@ st.image("images/logo2.png", use_column_width=True)
 
 st.title("MARS")
 
-st.write("""
+st.write("""MARS (Microbial Abundances Retrieved from Sequencing data) is a Python-based tool designed to process and analyze microbial abundance data. Typically, using the output from QIIME 2, MARS is an all encompassing function for obtaining relative abundance data that is compatible with mgPipe. MARS ensures the maximum number of species are mapped to the desired resource, such as AGORA2 and APOLLO, and also provides illuminating informational statistics on the data used.
+​
+The Streamlit application integrates the functionalities of MARS to provide a comprehensive tool for microbiome researchers. It automates the processing of metagenomic datasets, taxonomic name resolution, and mapping to resources, thereby facilitating a streamlined workflow for microbiome data analysis.​
 """)
 
 col1, col2, col3, col4 = st.columns(4)
