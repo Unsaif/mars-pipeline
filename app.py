@@ -11,17 +11,17 @@ st.set_page_config(layout="wide")
 from MARS.utils import read_file_as_dataframe, merge_files, normalize_dataframes, combine_metrics
 from MARS.operations import split_taxonomic_groups, rename_taxa, calculate_metrics, check_presence_in_agora2
 
-def convert_df(df, file_format):
+def convert_df(df, file_format, index=False):
     if file_format == "xlsx":
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            df.to_excel(writer, index=False)
+            df.to_excel(writer, index=index)
         data = output.getvalue()
         return data
     elif file_format == "txt":
-        return df.to_csv(index=False, sep="\t").encode("utf-8")
+        return df.to_csv(index=index, sep="\t").encode("utf-8")
     else:
-        return df.to_csv(index=False).encode("utf-8")
+        return df.to_csv(index=index).encode("utf-8")
 
 
 def file_to_list(uploaded_file):
@@ -287,7 +287,7 @@ if (uploaded_file1 and uploaded_file2) or uploaded_file3:
             for i, (group, df) in enumerate(dataframe_groups['normalized'].items()):
                 
                 # Convert the DataFrame to downloadable
-                df_conv = convert_df(df, output_format)
+                df_conv = convert_df(df, output_format, index=True)
 
                 with tabs[i]:
                     col1, col2 = st.columns(2)
