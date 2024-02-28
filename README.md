@@ -6,6 +6,9 @@ This Streamlit application integrates the functionalities of MARS (Microbial Abu
 ## Tutorial 
 The tutorial on how to use the interface can be found here: `https://github.com/ThieleLab/MARS-tutorial` 
 
+## Python-Based function version
+A version of MARS as a python function can be found here: `https://github.com/ThieleLab/MARS`. This version does not have the ANT functionality
+
 ## Installation
 To run the application on your local machine, you will need to have Python (3.9 or above) installed, along with the necessary libraries. Follow these steps to get started:
 
