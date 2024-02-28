@@ -3,6 +3,9 @@
 ## Overview
 This Streamlit application integrates the functionalities of MARS (Microbial Abundances Retrieved from Sequencing data) and ANT (Automated NCBI Taxonomy) to provide a comprehensive tool for microbiome researchers. It automates the processing of metagenomic datasets, taxonomic name resolution, and mapping to resources like AGORA2, thereby facilitating a streamlined workflow for microbiome data analysis.
 
+## Tutorial 
+Please refer to a detailed tutorial on how to use the interface here: `https://github.com/ThieleLab/MARS-tutorial`
+
 ## Installation
 To run the application on your local machine, you will need to have Python (3.9 or above) installed, along with the necessary libraries. Follow these steps to get started:
 
@@ -11,6 +14,8 @@ To run the application on your local machine, you will need to have Python (3.9 
 2. Navigate to the cloned repository's directory: `cd mars-pipeline`
 
 3. Install the required Python packages: `pip install -r requirements.txt`
+
+4. In the terminal enter command: `streamlit run app.py`
 
 ## Usage
 After installation, you can run the application using Streamlit:
@@ -64,7 +69,7 @@ If the application is not loading, check if Docker is running correctly and if t
 If you encounter errors during the build process, verify that your `Dockerfile` and `requirements.txt` are set up correctly.
 
 ## Input Data
-The application accepts input data in specific formats. For MARS, a feature table and taxonomy table, or an already combined table are required. Please refer to the sample input files provided in the tests/test_files directory:
+The application accepts input data in specific formats. For MARS, a feature table and taxonomy table, or an already combined table are required. Please refer to the sample input files provided in the `tests/test_files` directory:
 `feature_table.txt`, `taxonomy.tsv` and `merged.csv`
 
 ## Contributing
@@ -78,5 +83,3 @@ For support, please open an issue in the GitHub repository or contact ines.thiel
 - Bram Nap - Contributions 
 - Filippo Martinelli - Contributions
 
-## How to Cite
-If you use the MARS Streamlit application in your research, please cite it as follows:
