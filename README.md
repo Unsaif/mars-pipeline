@@ -4,7 +4,7 @@
 This Streamlit application integrates the functionalities of MARS (Microbial Abundances Retrieved from Sequencing data) and ANT (Automated NCBI Taxonomy) to provide a comprehensive tool for microbiome researchers. It automates the processing of metagenomic datasets, taxonomic name resolution, and mapping to resources like AGORA2, thereby facilitating a streamlined workflow for microbiome data analysis.
 
 ## Tutorial 
-Please refer to a detailed tutorial on how to use the interface here: `https://github.com/ThieleLab/MARS-tutorial`
+The tutorial on how to use the interface can be found here: `https://github.com/ThieleLab/MARS-tutorial` 
 
 ## Installation
 To run the application on your local machine, you will need to have Python (3.9 or above) installed, along with the necessary libraries. Follow these steps to get started:
