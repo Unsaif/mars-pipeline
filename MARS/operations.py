@@ -17,10 +17,11 @@ def split_taxonomic_groups(merged_df):
     levels = ['Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species']
 
     # Replace all level indicators in the 'Taxon' column
+    merged_df = merged_df.reset_index()
     merged_df['Taxon'] = merged_df['Taxon'].replace(".__", "", regex=True)
 
     # Reset the index and split the index column into separate columns for each taxonomic level
-    taxonomic_levels_df = merged_df.reset_index()
+    taxonomic_levels_df = merged_df 
     taxonomic_split_df = taxonomic_levels_df['Taxon'].str.split('; ', expand=True)
     taxonomic_split_df = taxonomic_split_df.fillna('') # deals with cases of empty string instead of np.nan
     taxonomic_split_df.columns = levels
