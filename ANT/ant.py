@@ -2,7 +2,7 @@ from requests_html import HTMLSession
 from ANT.tax_id import get_tax_id
 import pickle
 import streamlit as st
-
+import pandas as pd 
 def remove_consecutive_duplicates(lst):
     new_lst = [lst[i] for i in range(len(lst) - 1) if lst[i] != lst[i + 1]]
     new_lst.append(lst[-1])  # Always include the last element
@@ -13,8 +13,10 @@ def remove_consecutive_duplicates(lst):
 def ant(species_list, resource):
     if resource is None:
         # Open a pickle file and load it into a variable
-        with open("./ANT/agora2_species.pkl", "rb") as f:
-            resource = pickle.load(f)
+        # with open("./ANT/agora2_species.pkl", "rb") as f:
+        #     resource = pickle.load(f)
+        df = pd.read_parquet('../MARS/AGORA2.parquet')
+        resource = df['Species']
 
     # Initialize an empty dictionary to store species and their Tax IDs
     taxid_dic = {}
