@@ -32,7 +32,7 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
                         'present': normalized_present_dataframes, 
                         'absent': normalized_absent_dataframes,
                         'metrics': combined_metrics
-                        }
+                        'combinedInput': merged_dataframe}
     
     dataframe_groups.update(stratification_groups)
 
