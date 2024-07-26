@@ -1,6 +1,7 @@
 from MARS.utils import merge_files, normalize_dataframes, save_dataframes, combine_metrics
 from MARS.operations import split_taxonomic_groups, rename_taxa, calculate_metrics, check_presence_in_agora2
 import pandas as pd
+import os
 
 def process_microbial_abundances(input_file1, input_file2, output_path=None, cutoff=None, output_format="csv", stratification_file=None):
     merged_dataframe = merge_files(input_file1, input_file2)
@@ -31,13 +32,12 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
     dataframe_groups = {'normalized': normalized_dataframes, 
                         'present': normalized_present_dataframes, 
                         'absent': normalized_absent_dataframes,
-                        'metrics': combined_metrics
-                        'combinedInput': merged_dataframe}
+                        'metrics': combined_metrics}
     
     dataframe_groups.update(stratification_groups)
 
     # Save the resulting DataFrames if output_path is provided
     if output_path is not None:
         save_dataframes(dataframe_groups, output_path, output_format)
-        
+        merged_dataframe.to_csv(os.path.join(output_path,'mergedInput.csv'))
     return dataframe_groups
