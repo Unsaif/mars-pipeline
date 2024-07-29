@@ -42,10 +42,12 @@ def merge_files(file_path1, file_path2):
     """
 
     # Read input files into pandas DataFrames  
-    df1 = read_file_as_dataframe(file_path1, 0)
+    
     if file_path2 == None:
+        df1 = read_file_as_dataframe(file_path1, 0)
         merged_df = df1
     else:
+        df1 = read_file_as_dataframe(file_path1, 0)
         df2 = read_file_as_dataframe(file_path2, 1) 
         # Merge DataFrames using their index values
         merged_df = pd.merge(df1, df2, left_index=True, right_index=True, how='inner')
