@@ -3,18 +3,19 @@ import os
 
 def read_file_as_dataframe(file_path, header):
     # Extract the file extension
-    try:
-        file_extension = file_path.type
-    except AttributeError:
-        ind = file_path.find('.')
-        extension = file_path[ind+1:]
+    #try:
+    file_extension = file_path.type
+    print(file_extension)
+    # except AttributeError:
+        # ind = file_path.find('.')
+        # extension = file_path[ind+1:]
 
-        if extension == 'txt':
-            file_extension = 'text/plain'
-        elif extension == 'csv':
-            file_extension = 'text/csv'
-        elif extension == 'xlsx':
-            file_extension == 'spreadsheet'
+        # if extension == 'txt':
+            # file_extension = 'text/plain'
+        # elif extension == 'csv':
+            # file_extension = 'text/csv'
+        # elif extension == 'xlsx':
+            # file_extension == 'spreadsheet'
 
     # Read the file based on its extension
     if file_extension == 'text/plain' or file_extension == 'text/tab-separated-values':
