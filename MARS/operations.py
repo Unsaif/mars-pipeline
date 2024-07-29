@@ -3,7 +3,7 @@ import json
 import os
 import numpy as np
 
-def split_taxonomic_groups(merged_df):
+def split_taxonomic_groups(merged_df, flagLoneSpecies=False, taxaSplit='; '):
     """
     Split the taxonomic groups in the index of the input DataFrame and create separate DataFrames for each taxonomic level.
 
@@ -19,17 +19,19 @@ def split_taxonomic_groups(merged_df):
     # Replace all level indicators in the 'Taxon' column
     merged_df = merged_df.reset_index()
     merged_df['Taxon'] = merged_df['Taxon'].replace(".__", "", regex=True)
-
+    print(taxaSplit)
     # Reset the index and split the index column into separate columns for each taxonomic level
     taxonomic_levels_df = merged_df 
-    taxonomic_split_df = taxonomic_levels_df['Taxon'].str.split('; ', expand=True)
+    taxonomic_split_df = taxonomic_levels_df['Taxon'].str.split(taxaSplit, expand=True)
+    print(taxonomic_split_df)
     taxonomic_split_df = taxonomic_split_df.fillna('') # deals with cases of empty string instead of np.nan
     taxonomic_split_df.columns = levels
 
     # Concatenate genus and species names if both are present, otherwise leave species column unchanged
-    taxonomic_split_df['Species'] = taxonomic_split_df.apply(
-        lambda row: row['Genus'] + '_' + row['Species'] if row['Species'] != '' else row['Species'],
-        axis=1
+    if flagLoneSpecies:
+        taxonomic_split_df['Species'] = taxonomic_split_df.apply(
+            lambda row: row['Genus'] + '_' + row['Species'] if row['Species'] != '' else row['Species'],
+            axis=1
     )
 
     # Concatenate the taxonomic_split_df and the abundance data from taxonomic_levels_df

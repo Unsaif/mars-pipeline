@@ -3,28 +3,29 @@ import os
 
 def read_file_as_dataframe(file_path, header):
     # Extract the file extension
-    #try:
-    file_extension = file_path.type
-    print(file_extension)
-    # except AttributeError:
-        # ind = file_path.find('.')
-        # extension = file_path[ind+1:]
-
-        # if extension == 'txt':
-            # file_extension = 'text/plain'
-        # elif extension == 'csv':
-            # file_extension = 'text/csv'
-        # elif extension == 'xlsx':
-            # file_extension == 'spreadsheet'
-
+    try:
+        file_extension = file_path.type
+    except AttributeError:
+        ind = file_path.find('.')
+        extension = file_path[ind+1:]
+        if extension == 'txt':
+            file_extension = 'text/plain'
+        elif extension == 'csv':
+            file_extension = 'text/csv'
+        elif extension == 'xlsx':
+            file_extension = 'spreadsheet'
+        else:
+            file_extension = 'not found'
     # Read the file based on its extension
     if file_extension == 'text/plain' or file_extension == 'text/tab-separated-values':
         # Assuming the txt file is delimited (e.g., CSV)
         return pd.read_csv(file_path, sep='\t', index_col=[0], low_memory=False, header=header)  # Update delimiter if necessary
-    elif file_extension == 'text/csv':
+    elif file_extension == 'text/csv' or file_extension == 'application/vnd.ms-excel':
         return pd.read_csv(file_path, index_col=[0], low_memory=False, header=header)
-    elif file_extension == 'spreadsheet':
-        return pd.read_excel(file_path, engine='openpyxl', index_col=[0], low_memory=False, header=header)
+    elif file_extension == 'spreadsheet' or file_extension == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+        # Removed low_memory input argument as it seems it is not longer accepted in the pd.read_excel function
+        # return pd.read_excel(file_path, engine='openpyxl', index_col=[0], low_memory=False, header=header)
+        return pd.read_excel(file_path, engine='openpyxl', index_col=[0], header=header)
     else:
         raise ValueError(f"Unsupported file type: {file_extension}")
 
@@ -40,21 +41,22 @@ def merge_files(file_path1, file_path2):
         pd.DataFrame: The merged DataFrame.
     """
 
-    # Read input files into pandas DataFrames
+    # Read input files into pandas DataFrames  
     df1 = read_file_as_dataframe(file_path1, 0)
-    df2 = read_file_as_dataframe(file_path2, 1) 
+    if file_path2 == None:
+        merged_df = df1
+    else:
+        df2 = read_file_as_dataframe(file_path2, 1) 
+        # Merge DataFrames using their index values
+        merged_df = pd.merge(df1, df2, left_index=True, right_index=True, how='inner')
+        # Drop the 'Confidence' column
+        try:
+            merged_df = merged_df.drop(columns=['Confidence'])
+        except:
+            pass
 
-    # Merge DataFrames using their index values
-    merged_df = pd.merge(df1, df2, left_index=True, right_index=True, how='inner')
-
-    # Drop the 'Confidence' column
-    try:
-        merged_df = merged_df.drop(columns=['Confidence'])
-    except:
-        pass
-
-    # Reset the index and set the 'Taxon' column as the new index
-    merged_df = merged_df.reset_index(drop=True).set_index('Taxon')
+        # Reset the index and set the 'Taxon' column as the new index
+        merged_df = merged_df.reset_index(drop=True).set_index('Taxon')
 
     return merged_df
 
