@@ -33,7 +33,7 @@ def file_to_list(uploaded_file):
             "FileSize": uploaded_file.size,
         }
         st.write(file_details)
-
+        
         if uploaded_file.type == "text/plain" or uploaded_file.type == "text/tab-separated-values":
             # For txt files, we simply read each line into a list
             bytes_data = uploaded_file.getvalue()
@@ -86,6 +86,8 @@ cutoff = st.sidebar.slider("Cutoff", 0.0, 100.0, 0.0)
 output_format = st.sidebar.radio("Output Format", ["csv", "txt", "xlsx"])
 stratification_file = st.sidebar.file_uploader("Stratification File", type=['csv', 'txt', 'xlsx'])
 skip_ant = st.sidebar.checkbox('Skip ANT')
+flagLoneSpecies = st.sidebar.checkbox('Genus name not present in the s__ taxonomic identifier?')
+taxaSplit = st.sidebar.text_input('Delimiter used to seperate taxonomic levels')
 
 if (uploaded_file1 and uploaded_file2) or uploaded_file3:
 
@@ -100,7 +102,8 @@ if (uploaded_file1 and uploaded_file2) or uploaded_file3:
                 st.success("Merging files: Success!")
 
         with st.spinner("Splitting taxonomic groups..."):
-            taxonomic_dataframes = split_taxonomic_groups(merged_dataframe)
+            st.success(flagLoneSpecies)
+            taxonomic_dataframes = split_taxonomic_groups(merged_dataframe, flagLoneSpecies=flagLoneSpecies, taxaSplit=taxaSplit)
         st.success("Splitting taxonomic groups: Success!")
 
         with st.spinner("Renaming taxa..."):
