@@ -3,9 +3,10 @@ from MARS.operations import split_taxonomic_groups, rename_taxa, calculate_metri
 import pandas as pd
 import os
 
-def process_microbial_abundances(input_file1, input_file2, output_path=None, cutoff=None, output_format="csv", stratification_file=None):
+def process_microbial_abundances(input_file1, input_file2, output_path=None, cutoff=None, output_format="csv", stratification_file=None, flagLoneSpecies=False, taxaSplit="; "):
+    print(taxaSplit, flagLoneSpecies, cutoff)
     merged_dataframe = merge_files(input_file1, input_file2)
-    taxonomic_dataframes = split_taxonomic_groups(merged_dataframe)
+    taxonomic_dataframes = split_taxonomic_groups(merged_dataframe, flagLoneSpecies=flagLoneSpecies, taxaSplit=taxaSplit)
     renamed_dataframes = rename_taxa(taxonomic_dataframes)
     present_dataframes, absent_dataframes = check_presence_in_agora2(renamed_dataframes)
     normalized_dataframes = normalize_dataframes(renamed_dataframes, cutoff=cutoff)
@@ -39,5 +40,7 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
     # Save the resulting DataFrames if output_path is provided
     if output_path is not None:
         save_dataframes(dataframe_groups, output_path, output_format)
+
         merged_dataframe.to_csv(os.path.join(output_path,'mergedInput.csv'))
+
     return dataframe_groups
