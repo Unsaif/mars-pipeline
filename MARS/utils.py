@@ -78,16 +78,22 @@ def normalize_dataframes(dataframes, cutoff=None):
         # Group by index and sum the rows with the same name
         grouped_df = df.groupby(df.index.name).sum()
 
+        # Comment out by BramNap as cutoff should occur after normalisation
         # Optionally apply cut-off for low abundance taxa
-        if cutoff is not None:
-            grouped_df = grouped_df[grouped_df >= cutoff]
+        #if cutoff is not None:
+        #    grouped_df = grouped_df[grouped_df >= cutoff]
 
         # Normalize each column so that the sum of each column is 1
         normalized_df = grouped_df / grouped_df.sum()
+  
+        # Optionally apply cut-off for low abundance taxa. Coincidentally
+        # also fixes empty cells to 0s.
+        if cutoff is not None:
+            normalized_df[normalized_df <= cutoff] = 0
 
         # Add the normalized DataFrame to the dictionary
         normalized_dfs[level] = normalized_df
-
+        
     return normalized_dfs
 
 def save_dataframes(dataframe_groups, output_path, output_format):
