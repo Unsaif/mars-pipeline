@@ -169,12 +169,15 @@ def calculate_metrics(dataframes, group=None):
             # Calculate Firmicutes to Bacteroidetes ratio
             firmicutes = phylum_distribution.loc['Firmicutes'] if 'Firmicutes' in phylum_distribution.index else 0
             bacteroidetes = phylum_distribution.loc['Bacteroidetes'] if 'Bacteroidetes' in phylum_distribution.index else 0
-            fb_ratio = firmicutes / bacteroidetes
+            # Gate to confirm op is legal
+            if int(firmicutes) > 0 and int(bacteroidetes) > 0:
+                fb_ratio = firmicutes / bacteroidetes
 
-            level_metrics.update({
-                'firmicutes_bacteroidetes_ratio': fb_ratio,
-            })
-
+                level_metrics.update({
+                    'firmicutes_bacteroidetes_ratio': fb_ratio,
+                })
+            else:
+                print('fb ratio could not be calculated')
         # Add the metrics to the main dictionary
         metrics[level] = pd.DataFrame.from_dict(level_metrics)
 
