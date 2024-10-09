@@ -2,13 +2,57 @@ import pandas as pd
 import json
 import os
 import numpy as np
+import re
+
+# Added new function to remove the clade identifier in the species names,
+# integrating matlab standalone code from Bram into the python MARS pipeline - JW
+def remove_clades_from_speciesNames(merged_df):
+    """ 
+    Remove clade extensions from species names and sums counts of all clades of a species together.
+
+    Args:
+        merged_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index.
+    
+    Returns:
+        grouped_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index, without clade seperation anymore.
+    """
+    merged_df = merged_df.reset_index()
+    taxa = merged_df['Taxon']
+
+    # Filter taxa that contain ';s__' & split the strings by ';'
+    taxaSpecies = taxa[taxa.str.contains(';s__')]
+    taxaSpeciesSplit = taxaSpecies.str.split(';', expand=True)
+
+    # Extract species from the 7th column (species column)
+    species = taxaSpeciesSplit[6].astype(str)
+
+    # Clean species names using regex
+    species = species.str.replace(r'_[A-Z]$', '', regex=True)
+    species = species.str.replace(r'_[A-Z]\s', '', regex=True)
+
+    # Update taxa with cleaned species
+    taxaUpdate = pd.concat([taxaSpeciesSplit.iloc[:, :6], species], axis=1)
+    taxaUpdate = taxaUpdate.apply(lambda x: ';'.join(x.astype(str)), axis=1)
+
+    # Replace original taxa with updated taxa & update the merged_df
+    taxa[taxa.str.contains(';s__')] = taxaUpdate.values
+    merged_df['Taxon'] = taxa
+
+    # Group by 'Taxon' and sum, remove 'GroupCount' column if it exists &
+    # rename columns to remove 'sum_' prefix
+    grouped_df = merged_df.groupby('Taxon').sum().reset_index()
+    if 'GroupCount' in grouped_df.columns:
+        grouped_df.drop(columns='GroupCount', inplace=True)
+    grouped_df.columns = [col.replace('sum_', '') for col in grouped_df.columns]
+
+    return grouped_df
 
 def split_taxonomic_groups(merged_df, flagLoneSpecies=False, taxaSplit='; '):
     """
     Split the taxonomic groups in the index of the input DataFrame and create separate DataFrames for each taxonomic level.
 
     Args:
-        merged_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index.
+        merged_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index, without clade seperation anymore.
 
     Returns:
         dict: A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
@@ -17,7 +61,10 @@ def split_taxonomic_groups(merged_df, flagLoneSpecies=False, taxaSplit='; '):
     levels = ['Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species']
 
     # Replace all level indicators in the 'Taxon' column
-    merged_df = merged_df.reset_index()
+    # Added drop=True argument as indexing of merged_df is reset within 
+    # remove_clades_from_speciesNames function - JW
+    merged_df = merged_df.reset_index(drop=True)
+    
     merged_df['Taxon'] = merged_df['Taxon'].replace(".__", "", regex=True)
     print(taxaSplit)
     # Reset the index and split the index column into separate columns for each taxonomic level
@@ -166,10 +213,19 @@ def calculate_metrics(dataframes, group=None):
             # Calculate phylum distribution
             phylum_distribution = df.groupby(df.index.name).sum()
 
+            # Replace altenative naming of Bacteroidetes to allow for
+            # ratio calculation - JW
+            phylum_distribution = phylum_distribution.rename({'Bacteroidota':'Bacteroidetes'}, axis='index')
+
             # Calculate Firmicutes to Bacteroidetes ratio
             firmicutes = phylum_distribution.loc['Firmicutes'] if 'Firmicutes' in phylum_distribution.index else 0
             bacteroidetes = phylum_distribution.loc['Bacteroidetes'] if 'Bacteroidetes' in phylum_distribution.index else 0
-            fb_ratio = firmicutes / bacteroidetes
+            # Added if statement for unlikely condition bacteroidetes are not present
+            # in microbiome dataset to avoid "division by 0" error - JW
+            if 'Bacteroidetes' in phylum_distribution.index:
+                fb_ratio = firmicutes / bacteroidetes
+            else:
+                fb_ratio = 0
 
             level_metrics.update({
                 'firmicutes_bacteroidetes_ratio': fb_ratio,
