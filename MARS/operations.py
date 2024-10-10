@@ -197,12 +197,16 @@ def calculate_metrics(dataframes, group=None):
     for level, df in dataframes.items():
         if group is not None:
             df = df[group]
-            
+        
         # Calculate read counts
         read_counts = df.sum()
 
         # Calculate alpha diversity using the Shannon index
-        shannon_index = -1 * (df * df.apply(np.log)).sum()
+        # Found small error in shannon_index calculation (needs rel.abundances
+        # as input instead of absolute readcounts per species). Added df with
+        # rel. abundances and calculated shannon_index from there - JW
+        rel_abundances = df.div(read_counts)
+        shannon_index = -1 * (rel_abundances * rel_abundances.apply(np.log)).sum()
 
         level_metrics = {
             'read_counts': read_counts,
