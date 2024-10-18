@@ -4,11 +4,11 @@ import os
 import numpy as np
 import re
 
-# Added new function to remove the clade identifier in the species names,
-# integrating matlab standalone code from Bram into the python MARS pipeline - JW
-def remove_clades_from_speciesNames(merged_df):
+# Added new function to remove the clade identifier in the phyla & species names,
+# expanding & integrating matlab standalone code from Bram into the python MARS pipeline - JW
+def remove_clades_from_taxaNames(merged_df):
     """ 
-    Remove clade extensions from species names and sums counts of all clades of a species together.
+    Remove clade extensions from phyla & species names and sums counts of all clades of each taxa together.
 
     Args:
         merged_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index.
@@ -19,6 +19,7 @@ def remove_clades_from_speciesNames(merged_df):
     merged_df = merged_df.reset_index()
     taxa = merged_df['Taxon']
 
+    
     # Filter taxa that contain ';s__' & split the strings by ';'
     taxaSpecies = taxa[taxa.str.contains(';s__')]
     taxaSpeciesSplit = taxaSpecies.str.split(';', expand=True)
@@ -31,11 +32,34 @@ def remove_clades_from_speciesNames(merged_df):
     species = species.str.replace(r'_[A-Z]\s', '', regex=True)
 
     # Update taxa with cleaned species
-    taxaUpdate = pd.concat([taxaSpeciesSplit.iloc[:, :6], species], axis=1)
-    taxaUpdate = taxaUpdate.apply(lambda x: ';'.join(x.astype(str)), axis=1)
+    taxaSpeciesUpdate = pd.concat([taxaSpeciesSplit.iloc[:, :6], species], axis=1)
+    taxaSpeciesUpdate = taxaSpeciesUpdate.apply(lambda x: ';'.join(x.astype(str)), axis=1)
 
-    # Replace original taxa with updated taxa & update the merged_df
-    taxa[taxa.str.contains(';s__')] = taxaUpdate.values
+    # Replace original taxa with updated species & update the merged_df
+    taxa[taxa.str.contains(';s__')] = taxaSpeciesUpdate.values
+    merged_df['Taxon'] = taxa
+
+
+    # Filter taxa that contain ';p__' & split the strings by ';'
+    taxaPhyla = taxa[taxa.str.contains(';p__')]
+    taxaPhylaSplit = taxaPhyla.str.split(';', expand=True)
+
+    # Extract phyla from the 2nd column (pyhla column)
+    phyla = taxaPhylaSplit[1].astype(str)
+
+    # Clean pyhla names using regex
+    phyla = phyla.str.replace(r'_[A-Z]$', '', regex=True)
+    phyla = phyla.str.replace(r'_[A-Z]\s', '', regex=True)
+
+    # Convert "Firmicutes" phlya naming convention into AGORA2 naming convention: "Bacillota"
+    phyla = phyla.replace("p__Firmicutes", "p__Bacillota")
+
+    # Update taxa with cleaned pyhla
+    taxaPhylaUpdate = pd.concat([taxaPhylaSplit.iloc[:, :1], phyla, taxaPhylaSplit.iloc[:, 2:]], axis=1)
+    taxaPhylaUpdate = taxaPhylaUpdate.apply(lambda x: ';'.join(x.astype(str)), axis=1)
+
+    # Replace original taxa with updated phyla & update the merged_df
+    taxa[taxa.str.contains(';p__')] = taxaPhylaUpdate.values
     merged_df['Taxon'] = taxa
 
     # Group by 'Taxon' and sum, remove 'GroupCount' column if it exists &
@@ -62,7 +86,7 @@ def split_taxonomic_groups(merged_df, flagLoneSpecies=False, taxaSplit='; '):
 
     # Replace all level indicators in the 'Taxon' column
     # Added drop=True argument as indexing of merged_df is reset within 
-    # remove_clades_from_speciesNames function - JW
+    # remove_clades_from_taxaNames function - JW
     merged_df = merged_df.reset_index(drop=True)
     
     merged_df['Taxon'] = merged_df['Taxon'].replace(".__", "", regex=True)
@@ -222,7 +246,8 @@ def calculate_metrics(dataframes, group=None):
             phylum_distribution = phylum_distribution.rename({'Bacteroidota':'Bacteroidetes'}, axis='index')
 
             # Calculate Firmicutes to Bacteroidetes ratio
-            firmicutes = phylum_distribution.loc['Firmicutes'] if 'Firmicutes' in phylum_distribution.index else 0
+            # As phyla "Firmicutes" is named as "Bacillota" in AGORA2, needed to replace taxa name - JW
+            firmicutes = phylum_distribution.loc['Bacillota'] if 'Bacillota' in phylum_distribution.index else 0
             bacteroidetes = phylum_distribution.loc['Bacteroidetes'] if 'Bacteroidetes' in phylum_distribution.index else 0
             # Added if statement for unlikely condition bacteroidetes are not present
             # in microbiome dataset to avoid "division by 0" error - JW
