@@ -249,6 +249,7 @@ def calculate_metrics(dataframes, group=None):
             # As phyla "Firmicutes" is named as "Bacillota" in AGORA2, needed to replace taxa name - JW
             firmicutes = phylum_distribution.loc['Bacillota'] if 'Bacillota' in phylum_distribution.index else 0
             bacteroidetes = phylum_distribution.loc['Bacteroidetes'] if 'Bacteroidetes' in phylum_distribution.index else 0
+
             # Added if statement for unlikely condition bacteroidetes are not present
             # in microbiome dataset to avoid "division by 0" error - JW
             if 'Bacteroidetes' in phylum_distribution.index:
@@ -259,6 +260,16 @@ def calculate_metrics(dataframes, group=None):
             level_metrics.update({
                 'firmicutes_bacteroidetes_ratio': fb_ratio,
             })
+
+            # Gate to confirm op is legal
+            if int(firmicutes) > 0 and int(bacteroidetes) > 0:
+                fb_ratio = firmicutes / bacteroidetes
+
+                level_metrics.update({
+                    'firmicutes_bacteroidetes_ratio': fb_ratio,
+                })
+            else:
+                print('fb ratio could not be calculated')
 
         # Add the metrics to the main dictionary
         metrics[level] = pd.DataFrame.from_dict(level_metrics)
