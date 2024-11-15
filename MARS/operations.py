@@ -4,11 +4,12 @@ import os
 import numpy as np
 import re
 
-# Added new function to remove the clade identifier in the phyla & species names,
+# Added new function to remove the clade identifier in the taxa names (if present),
 # expanding & integrating matlab standalone code from Bram into the python MARS pipeline - JW
 def remove_clades_from_taxaNames(merged_df):
     """ 
-    Remove clade extensions from phyla & species names and sums counts of all clades of each taxa together.
+    Remove clade extensions from taxonomic names at any taxonomic level (if present)
+    and sums counts of all clades of each taxa together.
 
     Args:
         merged_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index.
@@ -18,48 +19,40 @@ def remove_clades_from_taxaNames(merged_df):
     """
     merged_df = merged_df.reset_index()
     taxa = merged_df['Taxon']
-
     
-    # Filter taxa that contain ';s__' & split the strings by ';'
-    taxaSpecies = taxa[taxa.str.contains(';s__')]
-    taxaSpeciesSplit = taxaSpecies.str.split(';', expand=True)
+    # Abbreviations for all taxonomic levels
+    taxUnitAbbreviations = [';p__', ';c__', ';o__', ';f__', ';g__', ';s__']
+    # Specifies the column in which taxonomic level is present in split name (increases by 1 with each for-loop iteration)
+    columnTracker = 1
 
-    # Extract species from the 7th column (species column)
-    species = taxaSpeciesSplit[6].astype(str)
+    for taxLevel in taxUnitAbbreviations:
+        # Filter taxa that contain taxLevel & split the strings by ';'
+        taxa_wTaxLevel = taxa[taxa.str.contains(taxLevel)]
+        taxaSplit = taxa_wTaxLevel.str.split(';', expand=True)
+    
+        # Extract taxa from the taxLevel column
+        taxName = taxaSplit[columnTracker].astype(str)
+    
+        # Clean taxa names using regex
+        taxName = taxName.str.replace(r'_[A-Z]$', '', regex=True)
+        taxName = taxName.str.replace(r'_[A-Z]\s', '', regex=True)
 
-    # Clean species names using regex
-    species = species.str.replace(r'_[A-Z]$', '', regex=True)
-    species = species.str.replace(r'_[A-Z]\s', '', regex=True)
+        # Convert "Firmicutes" phlya naming convention into AGORA2 naming convention: "Bacillota"
+        taxName = taxName.replace("p__Firmicutes", "p__Bacillota")
+    
+        # Update full taxa name (inlcuding all taxLevels) with cleaned taxa
+        if taxLevel == ';s__':
+            taxaUpdate = pd.concat([taxaSplit.iloc[:, :columnTracker], taxName], axis=1)
+        else:
+            taxaUpdate = pd.concat([taxaSplit.iloc[:, :columnTracker], taxName, taxaSplit.iloc[:, columnTracker+1:]], axis=1)
+        taxaUpdate = taxaUpdate.apply(lambda x: ';'.join(x.astype(str)), axis=1)
+    
+        # Replace original taxa with updated taxa names & update the merged_df
+        taxa[taxa.str.contains(taxLevel)] = taxaUpdate.values
 
-    # Update taxa with cleaned species
-    taxaSpeciesUpdate = pd.concat([taxaSpeciesSplit.iloc[:, :6], species], axis=1)
-    taxaSpeciesUpdate = taxaSpeciesUpdate.apply(lambda x: ';'.join(x.astype(str)), axis=1)
-
-    # Replace original taxa with updated species & update the merged_df
-    taxa[taxa.str.contains(';s__')] = taxaSpeciesUpdate.values
-    merged_df['Taxon'] = taxa
-
-
-    # Filter taxa that contain ';p__' & split the strings by ';'
-    taxaPhyla = taxa[taxa.str.contains(';p__')]
-    taxaPhylaSplit = taxaPhyla.str.split(';', expand=True)
-
-    # Extract phyla from the 2nd column (pyhla column)
-    phyla = taxaPhylaSplit[1].astype(str)
-
-    # Clean pyhla names using regex
-    phyla = phyla.str.replace(r'_[A-Z]$', '', regex=True)
-    phyla = phyla.str.replace(r'_[A-Z]\s', '', regex=True)
-
-    # Convert "Firmicutes" phlya naming convention into AGORA2 naming convention: "Bacillota"
-    phyla = phyla.replace("p__Firmicutes", "p__Bacillota")
-
-    # Update taxa with cleaned pyhla
-    taxaPhylaUpdate = pd.concat([taxaPhylaSplit.iloc[:, :1], phyla, taxaPhylaSplit.iloc[:, 2:]], axis=1)
-    taxaPhylaUpdate = taxaPhylaUpdate.apply(lambda x: ';'.join(x.astype(str)), axis=1)
-
-    # Replace original taxa with updated phyla & update the merged_df
-    taxa[taxa.str.contains(';p__')] = taxaPhylaUpdate.values
+        # Increase column to match corresponding taxonomic level for next for-loop iteration
+        columnTracker += 1
+    # Replace the clade-containing taxa names by the updated taxa names without clades
     merged_df['Taxon'] = taxa
 
     # Group by 'Taxon' and sum, remove 'GroupCount' column if it exists &
@@ -260,16 +253,6 @@ def calculate_metrics(dataframes, group=None):
             level_metrics.update({
                 'firmicutes_bacteroidetes_ratio': fb_ratio,
             })
-
-            # Gate to confirm op is legal
-            if int(firmicutes) > 0 and int(bacteroidetes) > 0:
-                fb_ratio = firmicutes / bacteroidetes
-
-                level_metrics.update({
-                    'firmicutes_bacteroidetes_ratio': fb_ratio,
-                })
-            else:
-                print('fb ratio could not be calculated')
 
         # Add the metrics to the main dictionary
         metrics[level] = pd.DataFrame.from_dict(level_metrics)
