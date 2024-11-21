@@ -6,7 +6,7 @@ import re
 
 # Added new function to remove the clade identifier in the taxa names (if present),
 # expanding & integrating matlab standalone code from Bram into the python MARS pipeline - JW
-def remove_clades_from_taxaNames(merged_df):
+def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
     """ 
     Remove clade extensions from taxonomic names at any taxonomic level (if present)
     and sums counts of all clades of each taxa together.
@@ -21,31 +21,31 @@ def remove_clades_from_taxaNames(merged_df):
     taxa = merged_df['Taxon']
     
     # Abbreviations for all taxonomic levels
-    taxUnitAbbreviations = [';p__', ';c__', ';o__', ';f__', ';g__', ';s__']
+    taxUnitAbbreviations = ['p__', 'c__', 'o__', 'f__', 'g__', 's__']
     # Specifies the column in which taxonomic level is present in split name (increases by 1 with each for-loop iteration)
     columnTracker = 1
 
     for taxLevel in taxUnitAbbreviations:
         # Filter taxa that contain taxLevel & split the strings by ';'
         taxa_wTaxLevel = taxa[taxa.str.contains(taxLevel)]
-        taxaSplit = taxa_wTaxLevel.str.split(';', expand=True)
+        taxaSep = taxa_wTaxLevel.str.split(taxaSplit, expand=True)
     
         # Extract taxa from the taxLevel column
-        taxName = taxaSplit[columnTracker].astype(str)
+        taxName = taxaSep[columnTracker].astype(str)
     
         # Clean taxa names using regex
         taxName = taxName.str.replace(r'_[A-Z]$', '', regex=True)
         taxName = taxName.str.replace(r'_[A-Z]\s', '', regex=True)
 
-        # Convert "Firmicutes" phlya naming convention into AGORA2 naming convention: "Bacillota"
-        taxName = taxName.replace("p__Firmicutes", "p__Bacillota")
+        # Convert "Bacillota" phlya naming convention into AGORA2 naming convention: "Firmicutes"
+        taxName = taxName.replace("p__Bacillota", "p__Firmicutes")
     
         # Update full taxa name (inlcuding all taxLevels) with cleaned taxa
-        if taxLevel == ';s__':
-            taxaUpdate = pd.concat([taxaSplit.iloc[:, :columnTracker], taxName], axis=1)
+        if taxLevel == 's__':
+            taxaUpdate = pd.concat([taxaSep.iloc[:, :columnTracker], taxName], axis=1)
         else:
-            taxaUpdate = pd.concat([taxaSplit.iloc[:, :columnTracker], taxName, taxaSplit.iloc[:, columnTracker+1:]], axis=1)
-        taxaUpdate = taxaUpdate.apply(lambda x: ';'.join(x.astype(str)), axis=1)
+            taxaUpdate = pd.concat([taxaSep.iloc[:, :columnTracker], taxName, taxaSep.iloc[:, columnTracker+1:]], axis=1)
+        taxaUpdate = taxaUpdate.apply(lambda x: taxaSplit.join(x.astype(str)), axis=1)
     
         # Replace original taxa with updated taxa names & update the merged_df
         taxa[taxa.str.contains(taxLevel)] = taxaUpdate.values
@@ -161,28 +161,46 @@ def rename_taxa(taxonomic_dfs):
 
     return renamed_dfs
 
-def check_presence_in_agora2(dataframes):
+def check_presence_in_modelDatabase(dataframes, whichModelDatabase="both"):
     """
-    Check if entries from the input DataFrames are in the AGORA2 DataFrame under the same level column.
+    Check if entries from the input DataFrames are in the model-database DataFrame under the same level column.
     Split the input DataFrames into two DataFrames: present and absent. 
     Add "pan" prefix to the index of the present DataFrame if the level is "Species".
 
     Args:
-        dataframes (dict): A dictionary containing the input DataFrames to be checked against AGORA2.
+        dataframes (dict):           A dictionary containing the input DataFrames to be 
+                                     checked against the the model-database (currently 
+                                     AGORA2 or APOLLO, or combination of both).
+        whichModelDatabase (string): A string defining if AGORA2, APOLLO, or 
+                                     combination of both should be used as model
+                                     database to check presence in. 
+                                     Allowed Input: "AGORA2", "APOLLO", "both".
+                                     Default: "both".
 
     Returns:
         dict: A dictionary containing the present and absent DataFrames for each taxonomic level.
     """
 
     resources_dir = os.path.join(os.path.dirname(__file__), 'resources')
-    agora2_path = os.path.join(resources_dir, 'AGORA2.parquet')
+    modelDatabase_path = os.path.join(resources_dir, 'AGORA2_APOLLO.parquet')
+    
+    # Read in model-database as dataframe
+    modelDatabase_df = pd.read_parquet(modelDatabase_path)
 
-    agora2_df = pd.read_parquet(agora2_path)
+    # Check, if user wants to use the AGORA2 or APOLLO database, or combination of both &
+    # create subset accordingly
+    if whichModelDatabase.lower() == "agora2":
+        updatedModelDatabase_df = modelDatabase_df[modelDatabase_df['Resource'] == 'AGORA2'].drop('Resource', axis=1)
+    elif whichModelDatabase.lower() == "apollo":
+        updatedModelDatabase_df = modelDatabase_df[modelDatabase_df['Resource'] == 'APOLLO'].drop('Resource', axis=1)
+    else:
+        updatedModelDatabase_df = modelDatabase_df.drop('Resource', axis=1)
+    print(updatedModelDatabase_df)
 
     present_dataframes, absent_dataframes = {}, {}
     for level, input_df in dataframes.items():
         # Remove "_" from the index of the input DataFrame and find entries present in AGORA2
-        present_mask = input_df.index.str.replace('_', ' ').isin(agora2_df[level])
+        present_mask = input_df.index.str.replace('_', ' ').isin(updatedModelDatabase_df[level])
         present_df = input_df.loc[present_mask]
 
         # Add "pan" prefix to the index of the present DataFrame if the level is "Species"
@@ -240,7 +258,7 @@ def calculate_metrics(dataframes, group=None):
 
             # Calculate Firmicutes to Bacteroidetes ratio
             # As phyla "Firmicutes" is named as "Bacillota" in AGORA2, needed to replace taxa name - JW
-            firmicutes = phylum_distribution.loc['Bacillota'] if 'Bacillota' in phylum_distribution.index else 0
+            firmicutes = phylum_distribution.loc['Firmicutes'] if 'Firmicutes' in phylum_distribution.index else 0
             bacteroidetes = phylum_distribution.loc['Bacteroidetes'] if 'Bacteroidetes' in phylum_distribution.index else 0
 
             # Added if statement for unlikely condition bacteroidetes are not present
