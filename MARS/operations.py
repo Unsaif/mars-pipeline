@@ -8,11 +8,12 @@ import re
 # expanding & integrating matlab standalone code from Bram into the python MARS pipeline - JW
 def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
     """ 
-    Remove clade extensions from taxonomic names at any taxonomic level (if present)
+    Removes clade extensions from taxonomic names at any taxonomic level (if present)
     and sums counts of all clades of each taxa together.
 
     Args:
         merged_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index.
+        taxaSplit (string):       Seperator by which input taxonomic levels are seperated.
     
     Returns:
         grouped_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index, without clade seperation anymore.
@@ -34,10 +35,10 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
         taxName = taxaSep[columnTracker].astype(str)
     
         # Clean taxa names using regex
-        taxName = taxName.str.replace(r'_[A-Z]$', '', regex=True)
-        taxName = taxName.str.replace(r'_[A-Z]\s', '', regex=True)
+        taxName = taxName.str.replace(r'(_clade)?_[a-zA-Z]$', '', regex=True)
+        taxName = taxName.str.replace(r'(_clade)?_[a-zA-Z]\s', '', regex=True)
 
-        # Convert "Bacillota" phlya naming convention into AGORA2 naming convention: "Firmicutes"
+        # Convert "Bacillota" phlya naming convention into AGORA2/APOLLO naming convention: "Firmicutes"
         taxName = taxName.replace("p__Bacillota", "p__Firmicutes")
     
         # Update full taxa name (inlcuding all taxLevels) with cleaned taxa
@@ -195,11 +196,10 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="both"):
         updatedModelDatabase_df = modelDatabase_df[modelDatabase_df['Resource'] == 'APOLLO'].drop('Resource', axis=1)
     else:
         updatedModelDatabase_df = modelDatabase_df.drop('Resource', axis=1)
-    print(updatedModelDatabase_df)
 
     present_dataframes, absent_dataframes = {}, {}
     for level, input_df in dataframes.items():
-        # Remove "_" from the index of the input DataFrame and find entries present in AGORA2
+        # Remove "_" from the index of the input DataFrame and find entries present in AGORA2/APOLLO
         present_mask = input_df.index.str.replace('_', ' ').isin(updatedModelDatabase_df[level])
         present_df = input_df.loc[present_mask]
 
@@ -207,7 +207,7 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="both"):
         if level == 'Species':
             present_df.index = 'pan' + present_df.index
 
-        # Find entries absent in AGORA2
+        # Find entries absent in AGORA2/APOLLO
         absent_mask = ~present_mask
         absent_df = input_df.loc[absent_mask]
 
@@ -257,7 +257,6 @@ def calculate_metrics(dataframes, group=None):
             phylum_distribution = phylum_distribution.rename({'Bacteroidota':'Bacteroidetes'}, axis='index')
 
             # Calculate Firmicutes to Bacteroidetes ratio
-            # As phyla "Firmicutes" is named as "Bacillota" in AGORA2, needed to replace taxa name - JW
             firmicutes = phylum_distribution.loc['Firmicutes'] if 'Firmicutes' in phylum_distribution.index else 0
             bacteroidetes = phylum_distribution.loc['Bacteroidetes'] if 'Bacteroidetes' in phylum_distribution.index else 0
 
