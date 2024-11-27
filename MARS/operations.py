@@ -145,8 +145,6 @@ def rename_taxa(taxonomic_dfs):
 
     for level, df in taxonomic_dfs.items():
         renamed_df = df.copy()
-        print(level)
-        print(renamed_df.index)
 
         # Apply alterations
         for pattern in alterations:
@@ -161,7 +159,6 @@ def rename_taxa(taxonomic_dfs):
             renamed_df.index = renamed_df.index.str.replace(pattern, replacement, regex=True)
 
         # Add the renamed DataFrame to the dictionary
-        print(renamed_df.index)
         renamed_dfs[level] = renamed_df
 
     return renamed_dfs
@@ -220,7 +217,8 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="both"):
 
     return present_dataframes, absent_dataframes
 
-def calculate_metrics(dataframes, group=None):
+
+def calculate_metrics(dataframes, group=None, cutoff=None):
     """
     Calculate alpha diversity, read counts, Firmicutes to Bacteroidetes ratio.
 
@@ -232,40 +230,68 @@ def calculate_metrics(dataframes, group=None):
     """
 
     metrics = {}
+    abundance_metrics = {}
+    summ_stats = {}
 
     for level, df in dataframes.items():
         if group is not None:
             df = df[group]
         
+        # Group by index and sum the rows with the same name
+        grouped_df = df.groupby(df.index.name).sum()
+
+        # Get total number of taxa
+        num_taxa = grouped_df.shape[0]
+
         # Calculate read counts
-        read_counts = df.sum()
+        read_counts = grouped_df.sum()
+        mean_read_counts = np.mean(read_counts)
+        std_read_counts = np.std(read_counts)
+        
+        # Normalise read counts to relative abundances
+        rel_abundances = grouped_df.div(read_counts)
+
+        # Optionally apply cut-off for low abundant taxa
+        if cutoff is not None:
+            rel_abundances[rel_abundances <= cutoff] = 0
 
         # Calculate alpha diversity using the Shannon index
-        # Found small error in shannon_index calculation (needs rel.abundances
-        # as input instead of absolute readcounts per species). Added df with
-        # rel. abundances and calculated shannon_index from there - JW
-        rel_abundances = df.div(read_counts)
         shannon_index = -1 * (rel_abundances * rel_abundances.apply(np.log)).sum()
+        mean_shannon_index = np.mean(shannon_index)
+        std_shannon_index = np.std(shannon_index)
+
+        # Calculate non-zero entries per column to get species richness per sample
+        species_richness = (rel_abundances != 0).sum()
+        mean_species_richness = np.mean(species_richness)
+        std_species_richness = np.std(species_richness)
 
         level_metrics = {
             'read_counts': read_counts,
             'shannon_index': shannon_index,
         }
+        
+        # Calculate mean + SD, min & max relative abundance of all taxa & in 
+        # how many samples a taxa is present
+        level_abundance_metrics = pd.DataFrame({
+            'mean': rel_abundances.mean(axis=1),
+            'SD': rel_abundances.std(axis=1),
+            'minimum': rel_abundances.min(axis=1),
+            'maximum': rel_abundances.max(axis=1),
+            'non_zero_count': (rel_abundances != 0).sum(axis=1)
+        })
+        
+        abundance_metrics[level] = level_abundance_metrics
 
         if level == 'Phylum':
-            # Calculate phylum distribution
-            phylum_distribution = df.groupby(df.index.name).sum()
-
-            # Replace alternative naming of Bacteroidetes to allow for
-            # ratio calculation - JW
-            phylum_distribution = phylum_distribution.rename({'Bacteroidota':'Bacteroidetes'}, axis='index')
+            # Replace dataframe naming of Bacteroidetes to allow for ratio calculation
+            phylum_distribution = grouped_df.rename({'Bacteroidota':'Bacteroidetes'}, axis='index')
 
             # Calculate Firmicutes to Bacteroidetes ratio
             firmicutes = phylum_distribution.loc['Firmicutes'] if 'Firmicutes' in phylum_distribution.index else 0
             bacteroidetes = phylum_distribution.loc['Bacteroidetes'] if 'Bacteroidetes' in phylum_distribution.index else 0
 
-            # Added if statement for unlikely condition bacteroidetes are not present
-            # in microbiome dataset to avoid "division by 0" error - JW
+            # Added if statement for condition bacteroidetes are not present
+            # in microbiome dataset to avoid "division by 0" error
             if 'Bacteroidetes' in phylum_distribution.index:
                 fb_ratio = firmicutes / bacteroidetes
             else:
@@ -277,5 +303,7 @@ def calculate_metrics(dataframes, group=None):
 
         # Add the metrics to the main dictionary
         metrics[level] = pd.DataFrame.from_dict(level_metrics)
+        summ_stats[level] = [num_taxa, mean_read_counts, std_read_counts, mean_shannon_index, std_shannon_index, mean_species_richness, std_species_richness]
 
-    return metrics
+    return metrics, abundance_metrics, summ_stats
+
