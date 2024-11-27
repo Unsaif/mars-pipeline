@@ -37,14 +37,15 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
         # Clean taxa names using regex
         taxName = taxName.str.replace(r'(_clade)?_[a-zA-Z]$', '', regex=True)
         taxName = taxName.str.replace(r'(_clade)?_[a-zA-Z]\s', '', regex=True)
-
+        
         # Convert "Bacillota" phlya naming convention into AGORA2/APOLLO naming convention: "Firmicutes"
         taxName = taxName.replace("p__Bacillota", "p__Firmicutes")
     
-        # Update full taxa name (inlcuding all taxLevels) with cleaned taxa
         if taxLevel == 's__':
+            # Update full taxa name (inlcuding all taxLevels) with cleaned taxa
             taxaUpdate = pd.concat([taxaSep.iloc[:, :columnTracker], taxName], axis=1)
         else:
+            # Update full taxa name (inlcuding all taxLevels) with cleaned taxa
             taxaUpdate = pd.concat([taxaSep.iloc[:, :columnTracker], taxName, taxaSep.iloc[:, columnTracker+1:]], axis=1)
         taxaUpdate = taxaUpdate.apply(lambda x: taxaSplit.join(x.astype(str)), axis=1)
     
@@ -65,6 +66,7 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
 
     return grouped_df
 
+
 def split_taxonomic_groups(merged_df, flagLoneSpecies=False, taxaSplit='; '):
     """
     Split the taxonomic groups in the index of the input DataFrame and create separate DataFrames for each taxonomic level.
@@ -84,11 +86,10 @@ def split_taxonomic_groups(merged_df, flagLoneSpecies=False, taxaSplit='; '):
     merged_df = merged_df.reset_index(drop=True)
     
     merged_df['Taxon'] = merged_df['Taxon'].replace(".__", "", regex=True)
-    print(taxaSplit)
+
     # Reset the index and split the index column into separate columns for each taxonomic level
     taxonomic_levels_df = merged_df 
     taxonomic_split_df = taxonomic_levels_df['Taxon'].str.split(taxaSplit, expand=True)
-    print(taxonomic_split_df)
     taxonomic_split_df = taxonomic_split_df.fillna('') # deals with cases of empty string instead of np.nan
     taxonomic_split_df.columns = levels
 
@@ -144,6 +145,8 @@ def rename_taxa(taxonomic_dfs):
 
     for level, df in taxonomic_dfs.items():
         renamed_df = df.copy()
+        print(level)
+        print(renamed_df.index)
 
         # Apply alterations
         for pattern in alterations:
@@ -158,6 +161,7 @@ def rename_taxa(taxonomic_dfs):
             renamed_df.index = renamed_df.index.str.replace(pattern, replacement, regex=True)
 
         # Add the renamed DataFrame to the dictionary
+        print(renamed_df.index)
         renamed_dfs[level] = renamed_df
 
     return renamed_dfs
@@ -183,7 +187,7 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="both"):
     """
 
     resources_dir = os.path.join(os.path.dirname(__file__), 'resources')
-    modelDatabase_path = os.path.join(resources_dir, 'AGORA2_APOLLO.parquet')
+    modelDatabase_path = os.path.join(resources_dir, 'AGORA2_APOLLO_112024.parquet')
     
     # Read in model-database as dataframe
     modelDatabase_df = pd.read_parquet(modelDatabase_path)
@@ -252,7 +256,7 @@ def calculate_metrics(dataframes, group=None):
             # Calculate phylum distribution
             phylum_distribution = df.groupby(df.index.name).sum()
 
-            # Replace altenative naming of Bacteroidetes to allow for
+            # Replace alternative naming of Bacteroidetes to allow for
             # ratio calculation - JW
             phylum_distribution = phylum_distribution.rename({'Bacteroidota':'Bacteroidetes'}, axis='index')
 

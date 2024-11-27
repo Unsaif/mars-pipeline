@@ -6,7 +6,6 @@ import os
 def process_microbial_abundances(input_file1, input_file2, output_path=None, cutoff=None, output_format="csv", stratification_file=None, flagLoneSpecies=False, taxaSplit="; ", removeCladeExtensionsFromTaxa=True, whichModelDatabase="both"):
     print(taxaSplit, flagLoneSpecies, cutoff)
     merged_dataframe = merge_files(input_file1, input_file2)
-    # Added new function "remove_clades_from_taxaNames" in operations.py which can be executed optionally (default: True) - JW
     if removeCladeExtensionsFromTaxa == True:
         merged_dataframe = remove_clades_from_taxaNames(merged_dataframe, taxaSplit=taxaSplit)
     taxonomic_dataframes = split_taxonomic_groups(merged_dataframe, flagLoneSpecies=flagLoneSpecies, taxaSplit=taxaSplit)
