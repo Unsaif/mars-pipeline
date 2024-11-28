@@ -1,6 +1,9 @@
 import numpy as np
 import pandas as pd
 import os
+import logging
+
+logger = logging.getLogger('main.utils')
 
 def read_file_as_dataframe(file_path, header):
     # Extract the file extension
@@ -72,6 +75,9 @@ def normalize_dataframes(dataframes, cutoff=None, pre_mapping_read_counts=None):
     Args:
         dataframes (dict): A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
         cutoff (float, optional): A cut-off value for filtering out low abundance taxa. Defaults to None.
+        pre_mapping_read_counts (int64 list, optional): A list containing per-sample total read counts pre-mapping,
+                                allowing for taxa abundance normalization against pre-mapped total read counts.
+                                Defaults to None.
 
     Returns:
         dict: A dictionary with keys as taxonomic levels and values as the normalized DataFrames.
@@ -83,13 +89,14 @@ def normalize_dataframes(dataframes, cutoff=None, pre_mapping_read_counts=None):
         # Group by index and sum the rows with the same name
         grouped_df = df.groupby(df.index.name).sum()
 
-        # Normalize each column so that the sum of each column is 1
+        # Normalize each column so that the sum of each column is 1 (either
+        # to pre-mapped total read counts, or to the subset read counts)
         if pre_mapping_read_counts is not None:
             read_counts = pre_mapping_read_counts[level].sum()
         else:
             read_counts = grouped_df.sum()
         
-        # Normalize read counts to relative abundances
+        # Normalize read counts to get relative abundances of taxa
         rel_abundances_df = grouped_df.div(read_counts)
   
         # Optionally apply cut-off for low abundance taxa. Coincidentally
@@ -97,6 +104,19 @@ def normalize_dataframes(dataframes, cutoff=None, pre_mapping_read_counts=None):
         if cutoff is not None:
             rel_abundances_df[rel_abundances_df <= cutoff] = 0
 
+            # Identify which taxa in which samples are below cutoff threshold & set to 0, log them
+            entries_below_cutoff = rel_abundances_df[rel_abundances_df <= cutoff].stack().index.tolist()
+            taxa_below_cutoff = list(set([x[0] for x in entries_below_cutoff]))
+            samples_below_cutoff = list(set([x[1] for x in entries_below_cutoff]))
+
+            #taxa_below_cutoff = rel_abundances_df[rel_abundances_df <= cutoff].index.tolist()
+            if entries_below_cutoff:
+#                 logger_output_taxa = ', '.join(taxa_below_cutoff)
+#                 logger_output_samples = ', '.join(samples_below_cutoff)
+                logger.info(f"{level} taxa whose rel.abundance was below the cutoff & therefore set to 0: {entries_below_cutoff}")
+            else:
+                logger.info(f"No {level} taxa were below the cutoff.")
+            
         # Add the normalized DataFrame to the dictionary
         normalized_dfs[level] = rel_abundances_df
         
@@ -353,17 +373,19 @@ def combine_metrics(metrics1, metrics2, df_type="metrics"):
                                             'Post mapping': level_metrics_post_mapping})
             
             combined_metric['Mapping coverage'] = np.nan
-            combined_metric.loc[0:1, 'Mapping coverage'] = combined_metric.loc[0:1, 'Post mapping'] / combined_metric.loc[0:1, 'Pre mapping']
-            combined_metric.loc[3, 'Mapping coverage'] = combined_metric.loc[3, 'Post mapping'] - combined_metric.loc[3, 'Pre mapping']
-            combined_metric.loc[5, 'Mapping coverage'] = combined_metric.loc[5, 'Post mapping'] / combined_metric.loc[5, 'Pre mapping']
+            combined_metric.loc[0, 'Mapping coverage'] = combined_metric.loc[0, 'Post mapping'] / combined_metric.loc[0, 'Pre mapping']
+            combined_metric.loc[2, 'Mapping coverage'] = combined_metric.loc[2, 'Post mapping'] / combined_metric.loc[2, 'Pre mapping']
+            combined_metric.loc[4, 'Mapping coverage'] = combined_metric.loc[4, 'Post mapping'] - combined_metric.loc[4, 'Pre mapping']
+            combined_metric.loc[6, 'Mapping coverage'] = combined_metric.loc[6, 'Post mapping'] / combined_metric.loc[6, 'Pre mapping']
             
             combined_metric['Description'] = ['The number of taxa across all samples. MappingCoverage = post mapping/pre mapping.', \
-                                              'Mean number of species in a sample. MappingCoverage = post mapping/pre mapping.', \
-                                              'Standard deviation of species richness.', 'Mean alpha-diversity (calc. by shannon index) of a sample. MappingCoverage = post mapping - pre mapping.', \
-                                             'Standard deviation of shannon index.', 'Mean number of reads of a sample. MappingCoverage = post mapping/pre mapping.', \
+                                              'The estimated number of taxa following standard nomenclature. Estimated by excluding all taxa whose names contain "-" &/or multiple uppercase letters in a row.', \
+                                              'Mean number of species across samples. MappingCoverage = post mapping/pre mapping.', \
+                                              'Standard deviation of species richness.', 'Mean alpha-diversity (calc. by shannon index) across samples. MappingCoverage = post mapping - pre mapping.', \
+                                             'Standard deviation of shannon index.', 'Mean number of reads across samples. MappingCoverage = post mapping/pre mapping.', \
                                              'Standard deviation of read counts.']
 
-            combined_metric.index = ['Total number of species', 'Mean species richness', \
+            combined_metric.index = ['Total number of taxa', 'Estimated total number of named taxa', 'Mean species richness', \
                                      'Std species richness', 'Mean shannon index', 'Std shannon index', \
                                      'Mean read counts', 'Std read counts']
             
