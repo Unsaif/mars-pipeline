@@ -3,9 +3,10 @@ import json
 import os
 import numpy as np
 import re
+import logging
 
-# Added new function to remove the clade identifier in the taxa names (if present),
-# expanding & integrating matlab standalone code from Bram into the python MARS pipeline - JW
+logger = logging.getLogger('main.operations')
+
 def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
     """ 
     Removes clade extensions from taxonomic names at any taxonomic level (if present)
@@ -18,6 +19,8 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
     Returns:
         grouped_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index, without clade seperation anymore.
     """
+    logger.info("Removing clade extensions from taxa names.")
+    
     merged_df = merged_df.reset_index()
     taxa = merged_df['Taxon']
     
@@ -31,16 +34,26 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
         taxa_wTaxLevel = taxa[taxa.str.contains(taxLevel)]
         taxaSep = taxa_wTaxLevel.str.split(taxaSplit, expand=True)
     
-        # Extract taxa from the taxLevel column
+        # Extract taxa names from the taxLevel column
         taxName = taxaSep[columnTracker].astype(str)
-    
+        
+        # Filter taxName with occourence of clade extensions to output in logger
+        clade_pattern = r'(_clade)?_[a-zA-Z]$|(_clade)?_[a-zA-Z]\s'        
+        taxNames_wClades = taxName.str.match(clade_pattern)
+        matched_taxNames = taxName.loc[taxNames_wClades].tolist()        
+        if matched_taxNames:
+            logger_output = ', '.join(matched_taxNames)
+            logger.info(f"List of {taxLevel} taxa for which clade extension was found & removed: {logger_output}.")
+        else:
+            logger.info(f"For {taxLevel} taxa no clade extension was found & removed.")
+
         # Clean taxa names using regex
         taxName = taxName.str.replace(r'(_clade)?_[a-zA-Z]$', '', regex=True)
         taxName = taxName.str.replace(r'(_clade)?_[a-zA-Z]\s', '', regex=True)
-
+        
         # Convert "Bacillota" phlya naming convention into AGORA2/APOLLO naming convention: "Firmicutes"
         taxName = taxName.replace("p__Bacillota", "p__Firmicutes")
-    
+        
         # Update full taxa name (inlcuding all taxLevels) with cleaned taxa
         if taxLevel == 's__':
             taxaUpdate = pd.concat([taxaSep.iloc[:, :columnTracker], taxName], axis=1)
@@ -53,6 +66,7 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
 
         # Increase column to match corresponding taxonomic level for next for-loop iteration
         columnTracker += 1
+    
     # Replace the clade-containing taxa names by the updated taxa names without clades
     merged_df['Taxon'] = taxa
 
@@ -65,6 +79,7 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
 
     return grouped_df
 
+
 def split_taxonomic_groups(merged_df, flagLoneSpecies=False, taxaSplit='; '):
     """
     Split the taxonomic groups in the index of the input DataFrame and create separate DataFrames for each taxonomic level.
@@ -75,6 +90,7 @@ def split_taxonomic_groups(merged_df, flagLoneSpecies=False, taxaSplit='; '):
     Returns:
         dict: A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
     """
+    logger.info("Split taxonomic levels in seperate dataframes, each per level.")
 
     levels = ['Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species']
 
@@ -84,11 +100,10 @@ def split_taxonomic_groups(merged_df, flagLoneSpecies=False, taxaSplit='; '):
     merged_df = merged_df.reset_index(drop=True)
     
     merged_df['Taxon'] = merged_df['Taxon'].replace(".__", "", regex=True)
-    print(taxaSplit)
+
     # Reset the index and split the index column into separate columns for each taxonomic level
     taxonomic_levels_df = merged_df 
     taxonomic_split_df = taxonomic_levels_df['Taxon'].str.split(taxaSplit, expand=True)
-    print(taxonomic_split_df)
     taxonomic_split_df = taxonomic_split_df.fillna('') # deals with cases of empty string instead of np.nan
     taxonomic_split_df.columns = levels
 
@@ -129,6 +144,7 @@ def rename_taxa(taxonomic_dfs):
     Returns:
         dict: A dictionary with keys as taxonomic levels and values as the renamed DataFrames.
     """
+    logger.info("Renaming taxa for database compatibility.")
 
     resources_dir = os.path.join(os.path.dirname(__file__), 'resources')
     renaming_json_path = os.path.join(resources_dir, 'renaming.json')
@@ -159,6 +175,18 @@ def rename_taxa(taxonomic_dfs):
 
         # Add the renamed DataFrame to the dictionary
         renamed_dfs[level] = renamed_df
+        
+        # Identify & log replaced entries
+        replaced_entries = df.index[df.index != renamed_df.index]
+        replacement_pairs = []
+        for original_taxa_name, replacement in zip(replaced_entries, renamed_df.index[df.index != renamed_df.index]):
+            replacement_pairs.append(f"Original taxa name:{original_taxa_name} - Replacement: {replacement}")
+        
+        if replacement_pairs:
+            logger_output = ', '.join(replacement_pairs)
+            logger.info(f"Original {level} taxa name(s) with their replacement(s): {logger_output}.")
+        else:
+            logger.info(f"No taxa namings were replaced.")
 
     return renamed_dfs
 
@@ -170,7 +198,7 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="both"):
 
     Args:
         dataframes (dict):           A dictionary containing the input DataFrames to be 
-                                     checked against the the model-database (currently 
+                                     checked against the model-database (currently 
                                      AGORA2 or APOLLO, or combination of both).
         whichModelDatabase (string): A string defining if AGORA2, APOLLO, or 
                                      combination of both should be used as model
@@ -181,9 +209,10 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="both"):
     Returns:
         dict: A dictionary containing the present and absent DataFrames for each taxonomic level.
     """
+    logger.info('Checking presence of taxa in model database.')
 
     resources_dir = os.path.join(os.path.dirname(__file__), 'resources')
-    modelDatabase_path = os.path.join(resources_dir, 'AGORA2_APOLLO.parquet')
+    modelDatabase_path = os.path.join(resources_dir, 'AGORA2_APOLLO_112024.parquet')
     
     # Read in model-database as dataframe
     modelDatabase_df = pd.read_parquet(modelDatabase_path)
@@ -216,52 +245,101 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="both"):
 
     return present_dataframes, absent_dataframes
 
-def calculate_metrics(dataframes, group=None):
+
+def calculate_metrics(dataframes, group=None, cutoff=None, pre_mapping_read_counts=None):
     """
-    Calculate alpha diversity, read counts, Firmicutes to Bacteroidetes ratio.
+    Calculate & then summarize alpha diversity metrics, read counts & Firmicutes to Bacteroidetes ratio (for pyhlum)
+    to compare pre-mapping & post-mapping status & evaluate the mapping coverage.
 
     Args:
         dataframes (dict): A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
+        group (dict):      Stratified dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
+        cutoff (float, optional): A cut-off value for filtering out low abundance taxa. Defaults to None.
+        pre_mapping_read_counts (int64 list, optional): A list containing per-sample total read counts pre-mapping,
+                                allowing for taxa abundance normalization against pre-mapped total read counts.
+                                Defaults to None.
 
     Returns:
-        dict: A dictionary with keys as taxonomic levels and values as the calculated metrics.
+        dicts: Dictionaries with keys as taxonomic levels and values as the calculated metrics (metrics, abundance metrics, coverage summary statistics).
     """
 
     metrics = {}
+    abundance_metrics = {}
+    summ_stats = {}
 
     for level, df in dataframes.items():
         if group is not None:
             df = df[group]
         
-        # Calculate read counts
-        read_counts = df.sum()
+        # Group by index and sum the rows with the same name
+        grouped_df = df.groupby(df.index.name).sum()
+
+        # Get total number of taxa
+        num_taxa = grouped_df.shape[0]
+
+        # Estimate total number of named taxa, by checking for presence of "-"
+        # or multiple uppercase letters in a row in taxa name
+        taxa_name_contains_dash = grouped_df.index.str.contains('-')
+        taxa_name_contains_uppercase = grouped_df.index.str.contains(r'[A-Z]{2,}')
+        est_taxa_wo_standard_name = grouped_df[taxa_name_contains_dash | taxa_name_contains_uppercase]
+        est_num_taxa_w_standard_name = len(grouped_df.index) - len(est_taxa_wo_standard_name)
+
+        # Calculate read counts for dataframe subset & if provided, grab total read counts pre-mapping
+        if pre_mapping_read_counts is not None:
+            read_counts = pre_mapping_read_counts[level].sum()
+
+            read_counts_df = grouped_df.sum()
+            mean_read_counts_df = np.mean(read_counts_df)
+            std_read_counts_df = np.std(read_counts_df)
+        else:
+            read_counts = grouped_df.sum()
+            mean_read_counts_df = np.mean(read_counts)
+            std_read_counts_df = np.std(read_counts)
+        
+        # Normalize read counts to relative abundances per taxa
+        rel_abundances = grouped_df.div(read_counts)
+
+        # Optionally apply cut-off for low abundant taxa
+        if cutoff is not None:
+            rel_abundances[rel_abundances <= cutoff] = 0
 
         # Calculate alpha diversity using the Shannon index
-        # Found small error in shannon_index calculation (needs rel.abundances
-        # as input instead of absolute readcounts per species). Added df with
-        # rel. abundances and calculated shannon_index from there - JW
-        rel_abundances = df.div(read_counts)
         shannon_index = -1 * (rel_abundances * rel_abundances.apply(np.log)).sum()
+        mean_shannon_index = np.mean(shannon_index)
+        std_shannon_index = np.std(shannon_index)
+
+        # Calculate non-zero entries per column to get species richness per sample
+        species_richness = (rel_abundances != 0).sum()
+        mean_species_richness = np.mean(species_richness)
+        std_species_richness = np.std(species_richness)
 
         level_metrics = {
             'read_counts': read_counts,
             'shannon_index': shannon_index,
         }
+        
+        # Calculate mean + SD, min & max relative abundance of all taxa & in 
+        # how many samples a taxa is present
+        level_abundance_metrics = pd.DataFrame({
+            'mean': rel_abundances.mean(axis=1),
+            'SD': rel_abundances.std(axis=1),
+            'minimum': rel_abundances.min(axis=1),
+            'maximum': rel_abundances.max(axis=1),
+            'non_zero_count': (rel_abundances != 0).sum(axis=1)
+        })
+        
+        abundance_metrics[level] = level_abundance_metrics
 
         if level == 'Phylum':
-            # Calculate phylum distribution
-            phylum_distribution = df.groupby(df.index.name).sum()
-
-            # Replace altenative naming of Bacteroidetes to allow for
-            # ratio calculation - JW
-            phylum_distribution = phylum_distribution.rename({'Bacteroidota':'Bacteroidetes'}, axis='index')
+            # Replace dataframe naming of Bacteroidetes to allow for ratio calculation
+            phylum_distribution = grouped_df.rename({'Bacteroidota':'Bacteroidetes'}, axis='index')
 
             # Calculate Firmicutes to Bacteroidetes ratio
             firmicutes = phylum_distribution.loc['Firmicutes'] if 'Firmicutes' in phylum_distribution.index else 0
             bacteroidetes = phylum_distribution.loc['Bacteroidetes'] if 'Bacteroidetes' in phylum_distribution.index else 0
 
-            # Added if statement for unlikely condition bacteroidetes are not present
-            # in microbiome dataset to avoid "division by 0" error - JW
+            # Added if statement for condition bacteroidetes are not present
+            # in microbiome dataset to avoid "division by 0" error
             if 'Bacteroidetes' in phylum_distribution.index:
                 fb_ratio = firmicutes / bacteroidetes
             else:
@@ -273,5 +351,7 @@ def calculate_metrics(dataframes, group=None):
 
         # Add the metrics to the main dictionary
         metrics[level] = pd.DataFrame.from_dict(level_metrics)
+        summ_stats[level] = [num_taxa, est_num_taxa_w_standard_name, mean_species_richness, std_species_richness, mean_shannon_index, std_shannon_index, mean_read_counts_df, std_read_counts_df]
 
-    return metrics
+    return metrics, abundance_metrics, summ_stats
+
