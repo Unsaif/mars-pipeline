@@ -218,7 +218,7 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="both"):
     return present_dataframes, absent_dataframes
 
 
-def calculate_metrics(dataframes, group=None, cutoff=None):
+def calculate_metrics(dataframes, group=None, cutoff=None, pre_mapping_read_counts=None):
     """
     Calculate alpha diversity, read counts, Firmicutes to Bacteroidetes ratio.
 
@@ -244,11 +244,18 @@ def calculate_metrics(dataframes, group=None, cutoff=None):
         num_taxa = grouped_df.shape[0]
 
         # Calculate read counts
-        read_counts = grouped_df.sum()
-        mean_read_counts = np.mean(read_counts)
-        std_read_counts = np.std(read_counts)
+        if pre_mapping_read_counts is not None:
+            read_counts = pre_mapping_read_counts[level].sum()
+
+            read_counts_df = grouped_df.sum()
+            mean_read_counts_df = np.mean(read_counts_df)
+            std_read_counts_df = np.std(read_counts_df)
+        else:
+            read_counts = grouped_df.sum()
+            mean_read_counts_df = np.mean(read_counts)
+            std_read_counts_df = np.std(read_counts)
         
-        # Normalise read counts to relative abundances
+        # Normalize read counts to relative abundances
         rel_abundances = grouped_df.div(read_counts)
 
         # Optionally apply cut-off for low abundant taxa
@@ -303,7 +310,7 @@ def calculate_metrics(dataframes, group=None, cutoff=None):
 
         # Add the metrics to the main dictionary
         metrics[level] = pd.DataFrame.from_dict(level_metrics)
-        summ_stats[level] = [num_taxa, mean_read_counts, std_read_counts, mean_shannon_index, std_shannon_index, mean_species_richness, std_species_richness]
+        summ_stats[level] = [num_taxa, mean_species_richness, std_species_richness, mean_shannon_index, std_shannon_index, mean_read_counts_df, std_read_counts_df]
 
     return metrics, abundance_metrics, summ_stats
 

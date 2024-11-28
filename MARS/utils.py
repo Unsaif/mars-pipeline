@@ -63,7 +63,7 @@ def merge_files(file_path1, file_path2):
 
     return merged_df
 
-def normalize_dataframes(dataframes, cutoff=None):
+def normalize_dataframes(dataframes, cutoff=None, pre_mapping_read_counts=None):
     """
     Normalize the taxonomic DataFrames by grouping and summing rows with the same name,
     and then normalizing each column so that the sum of each column is 1. Optionally, a
@@ -83,21 +83,22 @@ def normalize_dataframes(dataframes, cutoff=None):
         # Group by index and sum the rows with the same name
         grouped_df = df.groupby(df.index.name).sum()
 
-        # Comment out by BramNap as cutoff should occur after normalisation
-        # Optionally apply cut-off for low abundance taxa
-        #if cutoff is not None:
-        #    grouped_df = grouped_df[grouped_df >= cutoff]
-
         # Normalize each column so that the sum of each column is 1
-        normalized_df = grouped_df / grouped_df.sum()
+        if pre_mapping_read_counts is not None:
+            read_counts = pre_mapping_read_counts[level].sum()
+        else:
+            read_counts = grouped_df.sum()
+        
+        # Normalize read counts to relative abundances
+        rel_abundances_df = grouped_df.div(read_counts)
   
         # Optionally apply cut-off for low abundance taxa. Coincidentally
         # also fixes empty cells to 0s.
         if cutoff is not None:
-            normalized_df[normalized_df <= cutoff] = 0
+            rel_abundances_df[rel_abundances_df <= cutoff] = 0
 
         # Add the normalized DataFrame to the dictionary
-        normalized_dfs[level] = normalized_df
+        normalized_dfs[level] = rel_abundances_df
         
     return normalized_dfs
 

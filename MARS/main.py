@@ -12,12 +12,13 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
 
     renamed_dataframes = rename_taxa(taxonomic_dataframes)
     present_dataframes, absent_dataframes = check_presence_in_modelDatabase(renamed_dataframes, whichModelDatabase=whichModelDatabase)
+    
     normalized_dataframes = normalize_dataframes(renamed_dataframes, cutoff=cutoff)
-    normalized_present_dataframes, normalized_absent_dataframes = normalize_dataframes(present_dataframes, cutoff=cutoff), normalize_dataframes(absent_dataframes, cutoff=cutoff)
+    normalized_present_dataframes, normalized_absent_dataframes = normalize_dataframes(present_dataframes, cutoff=cutoff), normalize_dataframes(absent_dataframes, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
 
     pre_agora2_check_metrics, pre_mapping_abundance_metrics, pre_mapping_summ_stats = calculate_metrics(renamed_dataframes, cutoff=cutoff)
-    post_agora2_check_metrics, present_post_mapping_abundance_metrics, present_post_mapping_summ_stats = calculate_metrics(present_dataframes, cutoff=cutoff)
-    absent_post_mapping_metrics, absent_post_mapping_abundance_metrics, absent_post_mapping_summ_stats = calculate_metrics(absent_dataframes, cutoff=cutoff)
+    post_agora2_check_metrics, present_post_mapping_abundance_metrics, present_post_mapping_summ_stats = calculate_metrics(present_dataframes, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
+    absent_post_mapping_metrics, absent_post_mapping_abundance_metrics, absent_post_mapping_summ_stats = calculate_metrics(absent_dataframes, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
 
     combined_metrics = combine_metrics(pre_agora2_check_metrics, post_agora2_check_metrics, df_type="metrics")
     combined_summ_stats = combine_metrics(pre_mapping_summ_stats, present_post_mapping_summ_stats, df_type="summ_stats")
@@ -29,7 +30,7 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
             # Select the columns for this group
             group_columns = list(stratification[stratification["group"] == group]["samples"])
             pre_group_metrics, pre_group_abundance_metrics, pre_group_summ_stats = calculate_metrics(renamed_dataframes, group=group_columns, cutoff=cutoff)
-            post_group_metrics, post_group_abundance_metrics, post_group_summ_stats = calculate_metrics(present_dataframes, group=group_columns, cutoff=cutoff)
+            post_group_metrics, post_group_abundance_metrics, post_group_summ_stats = calculate_metrics(present_dataframes, group=group_columns, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
 
             combined_group_metrics = combine_metrics(pre_group_metrics, post_group_metrics, df_type="metrics")
             combined_group_summ_stats = combine_metrics(pre_group_summ_stats, post_group_summ_stats, df_type="summ_stats")
