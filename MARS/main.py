@@ -1,19 +1,17 @@
 from MARS.utils import merge_files, normalize_dataframes, save_dataframes, combine_metrics
-from MARS.operations import remove_clades_from_taxaNames, split_taxonomic_groups, rename_taxa, calculate_metrics, check_presence_in_modelDatabase
+from MARS.operations import remove_clades_from_taxaNames, split_taxonomic_groups, rename_taxa, calculate_metrics, check_presence_in_modelDatabase, filter_samples_low_read_counts
 from logging_config import setup_logger
 import pandas as pd
 import os
 import logging
 
 
-def process_microbial_abundances(input_file1, input_file2, output_path=None, cutoff=None, output_format="csv", stratification_file=None, flagLoneSpecies=False, taxaSplit="; ", removeCladeExtensionsFromTaxa=True, whichModelDatabase="both"):
-    # Initialize logger to generate a MARS log file
-    logging_file_name = 'MARS.log'
-    logging_file_path = os.path.join(output_path, logging_file_name)
+def process_microbial_abundances(input_file1, input_file2, output_path=None, cutoff=None, output_format="csv", stratification_file=None, flagLoneSpecies=False, taxaSplit="; ", removeCladeExtensionsFromTaxa=True, whichModelDatabase="full_db"):
+    # Initialize logger to generate a MARS log file    
+    logger = setup_logger('main', os.path.join(output_path, 'MARS.log'))
+    logger_taxa_below_cutoff = setup_logger('taxa_below_cutoff', os.path.join(output_path, 'MARS_taxaBelowCutoff.log'))
     
-    logger = setup_logger('main', logging_file_path)
-    
-    logger.info(f'taxaSplit: {taxaSplit}, flagLoneSpecies: {flagLoneSpecies}, cutoff: {cutoff}, removeCladeExtensionsFromTaxa: {removeCladeExtensionsFromTaxa}, whichModelDatabase: {whichModelDatabase}.')
+    logger.info(f'INPUTS - taxaSplit: {taxaSplit}, flagLoneSpecies: {flagLoneSpecies}, cutoff: {cutoff}, removeCladeExtensionsFromTaxa: {removeCladeExtensionsFromTaxa}, whichModelDatabase: {whichModelDatabase}.')
     
     # Run MARS
     merged_dataframe = merge_files(input_file1, input_file2)
@@ -22,9 +20,9 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
         merged_dataframe = remove_clades_from_taxaNames(merged_dataframe, taxaSplit=taxaSplit)
 
     taxonomic_dataframes = split_taxonomic_groups(merged_dataframe, flagLoneSpecies=flagLoneSpecies, taxaSplit=taxaSplit)
-    # filtered_taxonomic_dataframes = filter_samples_low_read_counts(taxonomic_dataframes)
+    filtered_taxonomic_dataframes = filter_samples_low_read_counts(taxonomic_dataframes, sample_read_counts_cutoff=1)
 
-    renamed_dataframes = rename_taxa(taxonomic_dataframes)
+    renamed_dataframes = rename_taxa(filtered_taxonomic_dataframes)
 
     present_dataframes, absent_dataframes = check_presence_in_modelDatabase(renamed_dataframes, whichModelDatabase=whichModelDatabase)
     
@@ -34,14 +32,14 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
     normalized_present_dataframes, normalized_absent_dataframes = normalize_dataframes(present_dataframes, cutoff=cutoff), normalize_dataframes(absent_dataframes, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
     
     logger.info('Calculating metrices for pre-mapping dataframes.')
-    pre_agora2_check_metrics, pre_mapping_abundance_metrics, pre_mapping_summ_stats = calculate_metrics(renamed_dataframes, cutoff=cutoff)
+    pre_mapping_metrics, pre_mapping_abundance_metrics, pre_mapping_summ_stats = calculate_metrics(renamed_dataframes, cutoff=cutoff)
     logger.info('Normalizing post-mapping present taxa dataframes.')
-    post_agora2_check_metrics, present_post_mapping_abundance_metrics, present_post_mapping_summ_stats = calculate_metrics(present_dataframes, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
+    present_post_mapping_metrics, present_post_mapping_abundance_metrics, present_post_mapping_summ_stats = calculate_metrics(present_dataframes, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
     logger.info('Normalizing post-mapping absent taxa dataframes.')
     absent_post_mapping_metrics, absent_post_mapping_abundance_metrics, absent_post_mapping_summ_stats = calculate_metrics(absent_dataframes, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
     
     logger.info('Combining metrics dataframes.')
-    combined_metrics = combine_metrics(pre_agora2_check_metrics, post_agora2_check_metrics, df_type="metrics")
+    combined_metrics = combine_metrics(pre_mapping_metrics, present_post_mapping_metrics, df_type="metrics")
     combined_summ_stats = combine_metrics(pre_mapping_summ_stats, present_post_mapping_summ_stats, df_type="summ_stats")
 
     stratification_groups = {}
@@ -74,6 +72,7 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
 
     # Save the resulting DataFrames if output_path is provided
     if output_path is not None:
+        logger.info(f'Saving output to {output_path}.')
         save_dataframes(dataframe_groups, output_path, output_format)
 
         merged_dataframe.to_csv(os.path.join(output_path,'mergedInput.csv'))
