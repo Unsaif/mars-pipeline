@@ -229,7 +229,7 @@ def rename_taxa(taxonomic_dfs):
 
     return renamed_dfs
 
-def check_presence_in_modelDatabase(dataframes, whichModelDatabase="both"):
+def check_presence_in_modelDatabase(dataframes, whichModelDatabase="full_db"):
     """
     Check if entries from the input DataFrames are in the model-database DataFrame under the same level column.
     Split the input DataFrames into two DataFrames: present and absent. 
@@ -242,8 +242,8 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="both"):
         whichModelDatabase (string): A string defining if AGORA2, APOLLO, or 
                                      combination of both should be used as model
                                      database to check presence in. 
-                                     Allowed Input: "AGORA2", "APOLLO", "both".
-                                     Default: "both".
+                                     Allowed Input (case-insensitive): "AGORA2", "APOLLO", "full_db".
+                                     Default: "full_db".
 
     Returns:
         dict: A dictionary containing the present and absent DataFrames for each taxonomic level.

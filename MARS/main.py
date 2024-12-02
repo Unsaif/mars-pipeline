@@ -6,7 +6,7 @@ import os
 import logging
 
 
-def process_microbial_abundances(input_file1, input_file2, output_path=None, cutoff=None, output_format="csv", stratification_file=None, flagLoneSpecies=False, taxaSplit="; ", removeCladeExtensionsFromTaxa=True, whichModelDatabase="both"):
+def process_microbial_abundances(input_file1, input_file2, output_path=None, cutoff=None, output_format="csv", stratification_file=None, flagLoneSpecies=False, taxaSplit="; ", removeCladeExtensionsFromTaxa=True, whichModelDatabase="full_db"):
     # Initialize logger to generate a MARS log file
     logging_file_name = 'MARS.log'
     logging_file_path = os.path.join(output_path, logging_file_name)
