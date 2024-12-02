@@ -106,13 +106,8 @@ def normalize_dataframes(dataframes, cutoff=None, pre_mapping_read_counts=None):
 
             # Identify which taxa in which samples are below cutoff threshold & set to 0, log them
             entries_below_cutoff = rel_abundances_df[rel_abundances_df <= cutoff].stack().index.tolist()
-            taxa_below_cutoff = list(set([x[0] for x in entries_below_cutoff]))
-            samples_below_cutoff = list(set([x[1] for x in entries_below_cutoff]))
 
-            #taxa_below_cutoff = rel_abundances_df[rel_abundances_df <= cutoff].index.tolist()
             if entries_below_cutoff:
-#                 logger_output_taxa = ', '.join(taxa_below_cutoff)
-#                 logger_output_samples = ', '.join(samples_below_cutoff)
                 logger.info(f"{level} taxa whose rel.abundance was below the cutoff & therefore set to 0: {entries_below_cutoff}")
             else:
                 logger.info(f"No {level} taxa were below the cutoff.")
@@ -121,6 +116,61 @@ def normalize_dataframes(dataframes, cutoff=None, pre_mapping_read_counts=None):
         normalized_dfs[level] = rel_abundances_df
         
     return normalized_dfs
+
+
+def combine_metrics(metrics1, metrics2, df_type="metrics"):
+    """
+    Combine the metrics from two different sets of taxonomic DataFrames into a single DataFrame for each level.
+
+    Args:
+        metrics1 (dict): A dictionary with keys as taxonomic levels and values as the calculated metrics for the first group.
+        metrics2 (dict): A dictionary with keys as taxonomic levels and values as the calculated metrics for the second group.
+
+    Returns:
+        dict: A dictionary with keys as taxonomic levels and values as the combined DataFrames.
+    """
+    combined_metrics = {}
+
+    for level in metrics1.keys():
+        level_metrics_pre_mapping = metrics1[level]
+        level_metrics_post_mapping = metrics2[level]
+
+        if df_type == "metrics":
+            combined_level_metrics = {}
+
+            for metric_name in level_metrics_pre_mapping.keys():
+                
+                combined_metric = pd.DataFrame([level_metrics_pre_mapping[metric_name], level_metrics_post_mapping[metric_name]])
+                combined_metric.index = ['pre AGORA2 mapping', 'post AGORA2 mapping']
+                combined_level_metrics[metric_name] = combined_metric
+
+            combined_metrics[level] = combined_level_metrics
+
+        elif df_type == "summ_stats":
+            combined_metric = pd.DataFrame({'Pre mapping': level_metrics_pre_mapping, \
+                                            'Post mapping': level_metrics_post_mapping})
+            
+            combined_metric['Mapping coverage'] = np.nan
+            combined_metric.loc[0, 'Mapping coverage'] = combined_metric.loc[0, 'Post mapping'] / combined_metric.loc[0, 'Pre mapping']
+            combined_metric.loc[2, 'Mapping coverage'] = combined_metric.loc[2, 'Post mapping'] / combined_metric.loc[2, 'Pre mapping']
+            combined_metric.loc[4, 'Mapping coverage'] = combined_metric.loc[4, 'Post mapping'] - combined_metric.loc[4, 'Pre mapping']
+            combined_metric.loc[6, 'Mapping coverage'] = combined_metric.loc[6, 'Post mapping'] / combined_metric.loc[6, 'Pre mapping']
+            
+            combined_metric['Description'] = ['The number of taxa across all samples. MappingCoverage = post mapping/pre mapping.', \
+                                              'The estimated number of taxa following standard nomenclature. Estimated by excluding all taxa whose names contain "-" &/or multiple uppercase letters in a row.', \
+                                              'Mean number of species across samples. MappingCoverage = post mapping/pre mapping.', \
+                                              'Standard deviation of species richness.', 'Mean alpha-diversity (calc. by shannon index) across samples. MappingCoverage = post mapping - pre mapping.', \
+                                             'Standard deviation of shannon index.', 'Mean number of reads across samples. MappingCoverage = post mapping/pre mapping.', \
+                                             'Standard deviation of read counts.']
+
+            combined_metric.index = ['Total number of taxa', 'Estimated total number of named taxa', 'Mean species richness', \
+                                     'Std species richness', 'Mean shannon index', 'Std shannon index', \
+                                     'Mean read counts', 'Std read counts']
+            
+            combined_metrics[level] = combined_metric
+
+    return combined_metrics
+
 
 def save_dataframes(dataframe_groups, output_path, output_format):
     """
@@ -246,7 +296,7 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                 os.makedirs(level_output_path, exist_ok=True)
 
                 for metric_name, df in metrics_dataframes.items():
-                    file_name = f"{metric_name}.{output_format}"
+                    file_name = f"{metric_name}_stratified.{output_format}"
                     file_path = os.path.join(level_output_path, file_name)
 
                     if output_format == "csv":
@@ -266,7 +316,7 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                 level_output_path = os.path.join(group_output_path, level)
                 os.makedirs(level_output_path, exist_ok=True)
 
-                file_name = f"summ_stats_{level}.{output_format}"
+                file_name = f"summ_stats_{level}_stratified.{output_format}"
                 file_path = os.path.join(level_output_path, file_name)
 
                 if output_format == "csv":
@@ -286,7 +336,7 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                 level_output_path = os.path.join(group_output_path, level)
                 os.makedirs(level_output_path, exist_ok=True)
 
-                file_name = f"preMapping_abundanceMetrics_{level}.{output_format}"
+                file_name = f"preMapping_abundanceMetrics_{level}_stratified.{output_format}"
                 file_path = os.path.join(level_output_path, file_name)
 
                 if output_format == "csv":
@@ -306,7 +356,7 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                 level_output_path = os.path.join(group_output_path, level)
                 os.makedirs(level_output_path, exist_ok=True)
 
-                file_name = f"postMapping_abundanceMetrics_{level}.{output_format}"
+                file_name = f"postMapping_abundanceMetrics_{level}_stratified.{output_format}"
                 file_path = os.path.join(level_output_path, file_name)
 
                 if output_format == "csv":
@@ -340,55 +390,3 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                 else:
                     raise ValueError(f"Unsupported output format: {output_format}")
             
-def combine_metrics(metrics1, metrics2, df_type="metrics"):
-    """
-    Combine the metrics from two different sets of taxonomic DataFrames into a single DataFrame for each level.
-
-    Args:
-        metrics1 (dict): A dictionary with keys as taxonomic levels and values as the calculated metrics for the first group.
-        metrics2 (dict): A dictionary with keys as taxonomic levels and values as the calculated metrics for the second group.
-
-    Returns:
-        dict: A dictionary with keys as taxonomic levels and values as the combined DataFrames.
-    """
-    combined_metrics = {}
-
-    for level in metrics1.keys():
-        level_metrics_pre_mapping = metrics1[level]
-        level_metrics_post_mapping = metrics2[level]
-
-        if df_type == "metrics":
-            combined_level_metrics = {}
-
-            for metric_name in level_metrics_pre_mapping.keys():
-                
-                combined_metric = pd.DataFrame([level_metrics_pre_mapping[metric_name], level_metrics_post_mapping[metric_name]])
-                combined_metric.index = ['pre AGORA2 mapping', 'post AGORA2 mapping']
-                combined_level_metrics[metric_name] = combined_metric
-
-            combined_metrics[level] = combined_level_metrics
-
-        elif df_type == "summ_stats":
-            combined_metric = pd.DataFrame({'Pre mapping': level_metrics_pre_mapping, \
-                                            'Post mapping': level_metrics_post_mapping})
-            
-            combined_metric['Mapping coverage'] = np.nan
-            combined_metric.loc[0, 'Mapping coverage'] = combined_metric.loc[0, 'Post mapping'] / combined_metric.loc[0, 'Pre mapping']
-            combined_metric.loc[2, 'Mapping coverage'] = combined_metric.loc[2, 'Post mapping'] / combined_metric.loc[2, 'Pre mapping']
-            combined_metric.loc[4, 'Mapping coverage'] = combined_metric.loc[4, 'Post mapping'] - combined_metric.loc[4, 'Pre mapping']
-            combined_metric.loc[6, 'Mapping coverage'] = combined_metric.loc[6, 'Post mapping'] / combined_metric.loc[6, 'Pre mapping']
-            
-            combined_metric['Description'] = ['The number of taxa across all samples. MappingCoverage = post mapping/pre mapping.', \
-                                              'The estimated number of taxa following standard nomenclature. Estimated by excluding all taxa whose names contain "-" &/or multiple uppercase letters in a row.', \
-                                              'Mean number of species across samples. MappingCoverage = post mapping/pre mapping.', \
-                                              'Standard deviation of species richness.', 'Mean alpha-diversity (calc. by shannon index) across samples. MappingCoverage = post mapping - pre mapping.', \
-                                             'Standard deviation of shannon index.', 'Mean number of reads across samples. MappingCoverage = post mapping/pre mapping.', \
-                                             'Standard deviation of read counts.']
-
-            combined_metric.index = ['Total number of taxa', 'Estimated total number of named taxa', 'Mean species richness', \
-                                     'Std species richness', 'Mean shannon index', 'Std shannon index', \
-                                     'Mean read counts', 'Std read counts']
-            
-            combined_metrics[level] = combined_metric
-
-    return combined_metrics

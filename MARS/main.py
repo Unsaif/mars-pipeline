@@ -1,5 +1,5 @@
 from MARS.utils import merge_files, normalize_dataframes, save_dataframes, combine_metrics
-from MARS.operations import remove_clades_from_taxaNames, split_taxonomic_groups, rename_taxa, calculate_metrics, check_presence_in_modelDatabase
+from MARS.operations import remove_clades_from_taxaNames, split_taxonomic_groups, rename_taxa, calculate_metrics, check_presence_in_modelDatabase, filter_samples_low_read_counts
 from logging_config import setup_logger
 import pandas as pd
 import os
@@ -22,9 +22,9 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
         merged_dataframe = remove_clades_from_taxaNames(merged_dataframe, taxaSplit=taxaSplit)
 
     taxonomic_dataframes = split_taxonomic_groups(merged_dataframe, flagLoneSpecies=flagLoneSpecies, taxaSplit=taxaSplit)
-    # filtered_taxonomic_dataframes = filter_samples_low_read_counts(taxonomic_dataframes)
+    filtered_taxonomic_dataframes = filter_samples_low_read_counts(taxonomic_dataframes, sample_read_counts_cutoff=1)
 
-    renamed_dataframes = rename_taxa(taxonomic_dataframes)
+    renamed_dataframes = rename_taxa(filtered_taxonomic_dataframes)
 
     present_dataframes, absent_dataframes = check_presence_in_modelDatabase(renamed_dataframes, whichModelDatabase=whichModelDatabase)
     
@@ -34,14 +34,14 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
     normalized_present_dataframes, normalized_absent_dataframes = normalize_dataframes(present_dataframes, cutoff=cutoff), normalize_dataframes(absent_dataframes, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
     
     logger.info('Calculating metrices for pre-mapping dataframes.')
-    pre_agora2_check_metrics, pre_mapping_abundance_metrics, pre_mapping_summ_stats = calculate_metrics(renamed_dataframes, cutoff=cutoff)
+    pre_mapping_metrics, pre_mapping_abundance_metrics, pre_mapping_summ_stats = calculate_metrics(renamed_dataframes, cutoff=cutoff)
     logger.info('Normalizing post-mapping present taxa dataframes.')
-    post_agora2_check_metrics, present_post_mapping_abundance_metrics, present_post_mapping_summ_stats = calculate_metrics(present_dataframes, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
+    present_post_mapping_metrics, present_post_mapping_abundance_metrics, present_post_mapping_summ_stats = calculate_metrics(present_dataframes, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
     logger.info('Normalizing post-mapping absent taxa dataframes.')
     absent_post_mapping_metrics, absent_post_mapping_abundance_metrics, absent_post_mapping_summ_stats = calculate_metrics(absent_dataframes, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
     
     logger.info('Combining metrics dataframes.')
-    combined_metrics = combine_metrics(pre_agora2_check_metrics, post_agora2_check_metrics, df_type="metrics")
+    combined_metrics = combine_metrics(pre_mapping_metrics, present_post_mapping_metrics, df_type="metrics")
     combined_summ_stats = combine_metrics(pre_mapping_summ_stats, present_post_mapping_summ_stats, df_type="summ_stats")
 
     stratification_groups = {}

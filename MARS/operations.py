@@ -50,10 +50,7 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
         # Clean taxa names using regex
         taxName = taxName.str.replace(r'(_clade)?_[a-zA-Z]$', '', regex=True)
         taxName = taxName.str.replace(r'(_clade)?_[a-zA-Z]\s', '', regex=True)
-        
-        # Convert "Bacillota" phlya naming convention into AGORA2/APOLLO naming convention: "Firmicutes"
-        taxName = taxName.replace("p__Bacillota", "p__Firmicutes")
-        
+                
         # Update full taxa name (inlcuding all taxLevels) with cleaned taxa
         if taxLevel == 's__':
             taxaUpdate = pd.concat([taxaSep.iloc[:, :columnTracker], taxName], axis=1)
@@ -134,6 +131,48 @@ def split_taxonomic_groups(merged_df, flagLoneSpecies=False, taxaSplit='; '):
 
     return taxonomic_dfs
 
+
+def filter_samples_low_read_counts(taxonomic_dataframes, sample_read_counts_cutoff=1):
+    """
+    Filter all taxonomic abundance dataframes (containing absolute read counts) 
+    for samples which contain less total read counts than a specified cutoff & exclude them
+    from the output dataframes. This ensures there are no samples with read counts = 0, which
+    could lead to downstream errors in the pipeline, as well as that the sequencing depth
+    is high enough in each sample that saturation for OTU detection is reached.
+
+    Args:
+        taxonomic_dataframes (dict):        A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
+        sample_read_counts_cutoff (int):    A cutoff for minimal read counts in a sample to be included in downstream analysis.
+                                            Defaults to 1.
+
+    Returns:
+        filtered_taxonomic_dataframes (dict): A dictionary with keys as taxonomic levels and values as the corresponding DataFrames,
+                                            only with samples containing more reads than the cutoff.
+    """
+    logger.info('Filtering taxonomic dataframes for samples with read counts below/equal to cutoff (currently 1 read).')
+
+    filtered_taxonomic_dataframes = {}
+
+    for level, df in taxonomic_dataframes.items():
+        read_counts = df.sum()
+        
+        # Subset the level dataframe only including those samples with read count higher than cutoff
+        samples_higher_than_cutoff = [i for i, v in enumerate(read_counts) if v > sample_read_counts_cutoff]
+        level_filtered_taxonomic_dataframe = df.iloc[:, samples_higher_than_cutoff]
+        
+        filtered_taxonomic_dataframes[level] = level_filtered_taxonomic_dataframe
+
+        # Identify which samples are below/equal to the threshold & log them
+        samples_lower_equal_to_cutoff = [i for i, v in enumerate(read_counts) if v <= sample_read_counts_cutoff]
+        if samples_lower_equal_to_cutoff:
+            logger_output = ', '.join(samples_lower_equal_to_cutoff)
+            logger.info(f"Following {level} samples had a total read count below/equal to the cutoff & were removed: {logger_output}.")
+        else:
+            logger.info(f"No samples were below/equal to the read counts cutoff & removed.")
+
+    return filtered_taxonomic_dataframes
+
+
 def rename_taxa(taxonomic_dfs):
     """
     Rename taxa in the taxonomic DataFrames by applying alterations, specific alterations, and homosynonyms.
@@ -212,7 +251,7 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="both"):
     logger.info('Checking presence of taxa in model database.')
 
     resources_dir = os.path.join(os.path.dirname(__file__), 'resources')
-    modelDatabase_path = os.path.join(resources_dir, 'AGORA2_APOLLO_112024.parquet')
+    modelDatabase_path = os.path.join(resources_dir, 'AGORA2_APOLLO_28112024.parquet')
     
     # Read in model-database as dataframe
     modelDatabase_df = pd.read_parquet(modelDatabase_path)
@@ -293,6 +332,8 @@ def calculate_metrics(dataframes, group=None, cutoff=None, pre_mapping_read_coun
             std_read_counts_df = np.std(read_counts_df)
         else:
             read_counts = grouped_df.sum()
+            
+            read_counts_df = grouped_df.sum()
             mean_read_counts_df = np.mean(read_counts)
             std_read_counts_df = np.std(read_counts)
         
@@ -314,7 +355,7 @@ def calculate_metrics(dataframes, group=None, cutoff=None, pre_mapping_read_coun
         std_species_richness = np.std(species_richness)
 
         level_metrics = {
-            'read_counts': read_counts,
+            'read_counts': read_counts_df,
             'shannon_index': shannon_index,
         }
         
@@ -331,18 +372,13 @@ def calculate_metrics(dataframes, group=None, cutoff=None, pre_mapping_read_coun
         abundance_metrics[level] = level_abundance_metrics
 
         if level == 'Phylum':
-            # Replace dataframe naming of Bacteroidetes to allow for ratio calculation
-            phylum_distribution = grouped_df.rename({'Bacteroidota':'Bacteroidetes'}, axis='index')
-
             # Calculate Firmicutes to Bacteroidetes ratio
-            firmicutes = phylum_distribution.loc['Firmicutes'] if 'Firmicutes' in phylum_distribution.index else 0
-            bacteroidetes = phylum_distribution.loc['Bacteroidetes'] if 'Bacteroidetes' in phylum_distribution.index else 0
+            firmicutes = rel_abundances.loc['Firmicutes'] if 'Firmicutes' in rel_abundances.index else 0
+            bacteroidetes = rel_abundances.loc['Bacteroidetes'] if 'Bacteroidetes' in rel_abundances.index else 0
 
-            # Added if statement for condition bacteroidetes are not present
-            # in microbiome dataset to avoid "division by 0" error
-            if 'Bacteroidetes' in phylum_distribution.index:
+            try:
                 fb_ratio = firmicutes / bacteroidetes
-            else:
+            except ZeroDivisionError:
                 fb_ratio = 0
 
             level_metrics.update({
