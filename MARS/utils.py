@@ -4,6 +4,7 @@ import os
 import logging
 
 logger = logging.getLogger('main.utils')
+logger_taxa_below_cutoff = logging.getLogger('taxa_below_cutoff.utils')
 
 def read_file_as_dataframe(file_path, header):
     # Extract the file extension
@@ -108,7 +109,8 @@ def normalize_dataframes(dataframes, cutoff=None, pre_mapping_read_counts=None):
             entries_below_cutoff = rel_abundances_df[rel_abundances_df <= cutoff].stack().index.tolist()
 
             if entries_below_cutoff:
-                logger.info(f"{level} taxa whose rel.abundance was below the cutoff & therefore set to 0: {entries_below_cutoff}")
+                logger.info(f"{level} taxa were below the cutoff & are listed in seperate log-file.")
+                logger_taxa_below_cutoff.info(f"{level} taxa whose rel.abundance was below the cutoff & therefore set to 0: {entries_below_cutoff}")
             else:
                 logger.info(f"No {level} taxa were below the cutoff.")
             

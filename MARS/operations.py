@@ -387,7 +387,9 @@ def calculate_metrics(dataframes, group=None, cutoff=None, pre_mapping_read_coun
 
         # Add the metrics to the main dictionary
         metrics[level] = pd.DataFrame.from_dict(level_metrics)
-        summ_stats[level] = [num_taxa, est_num_taxa_w_standard_name, mean_species_richness, std_species_richness, mean_shannon_index, std_shannon_index, mean_read_counts_df, std_read_counts_df]
+        summ_stats[level] = [num_taxa, est_num_taxa_w_standard_name, \
+                             mean_species_richness, std_species_richness, \
+                             mean_shannon_index, std_shannon_index, \
+                             mean_read_counts_df, std_read_counts_df]
 
     return metrics, abundance_metrics, summ_stats
-

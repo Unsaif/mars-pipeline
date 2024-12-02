@@ -7,13 +7,11 @@ import logging
 
 
 def process_microbial_abundances(input_file1, input_file2, output_path=None, cutoff=None, output_format="csv", stratification_file=None, flagLoneSpecies=False, taxaSplit="; ", removeCladeExtensionsFromTaxa=True, whichModelDatabase="full_db"):
-    # Initialize logger to generate a MARS log file
-    logging_file_name = 'MARS.log'
-    logging_file_path = os.path.join(output_path, logging_file_name)
+    # Initialize logger to generate a MARS log file    
+    logger = setup_logger('main', os.path.join(output_path, 'MARS.log'))
+    logger_taxa_below_cutoff = setup_logger('taxa_below_cutoff', os.path.join(output_path, 'MARS_taxaBelowCutoff.log'))
     
-    logger = setup_logger('main', logging_file_path)
-    
-    logger.info(f'taxaSplit: {taxaSplit}, flagLoneSpecies: {flagLoneSpecies}, cutoff: {cutoff}, removeCladeExtensionsFromTaxa: {removeCladeExtensionsFromTaxa}, whichModelDatabase: {whichModelDatabase}.')
+    logger.info(f'INPUTS - taxaSplit: {taxaSplit}, flagLoneSpecies: {flagLoneSpecies}, cutoff: {cutoff}, removeCladeExtensionsFromTaxa: {removeCladeExtensionsFromTaxa}, whichModelDatabase: {whichModelDatabase}.')
     
     # Run MARS
     merged_dataframe = merge_files(input_file1, input_file2)
@@ -74,6 +72,7 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
 
     # Save the resulting DataFrames if output_path is provided
     if output_path is not None:
+        logger.info(f'Saving output to {output_path}.')
         save_dataframes(dataframe_groups, output_path, output_format)
 
         merged_dataframe.to_csv(os.path.join(output_path,'mergedInput.csv'))
