@@ -233,6 +233,10 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                     raise ValueError(f"Unsupported output format: {output_format}")
 
             for level, abundance_metrics_df in values[2].items():
+                # Replace ' ' by '_' in taxa names
+                abundance_metrics_df.index = abundance_metrics_df.index.str.replace(' ', '_')
+
+                # Save dataframes
                 level_output_path = os.path.join(group_output_path, level)
                 os.makedirs(level_output_path, exist_ok=True)
 
@@ -253,6 +257,10 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                     raise ValueError(f"Unsupported output format: {output_format}")
 
             for level, abundance_metrics_df in values[3].items():
+                # Replace ' ' by '_' in taxa names
+                abundance_metrics_df.index = abundance_metrics_df.index.str.replace(' ', '_')
+
+                # Save dataframes
                 level_output_path = os.path.join(group_output_path, level)
                 os.makedirs(level_output_path, exist_ok=True)
 
@@ -273,6 +281,10 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                     raise ValueError(f"Unsupported output format: {output_format}")
     
             for level, abundance_metrics_df in values[4].items():
+                # Replace ' ' by '_' in taxa names
+                abundance_metrics_df.index = abundance_metrics_df.index.str.replace(' ', '_')
+
+                # Save dataframes
                 level_output_path = os.path.join(group_output_path, level)
                 os.makedirs(level_output_path, exist_ok=True)
 
@@ -335,6 +347,10 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                     raise ValueError(f"Unsupported output format: {output_format}")
 
             for level, abundance_metrics_df in values[2].items():
+                # Replace ' ' by '_' in taxa names
+                abundance_metrics_df.index = abundance_metrics_df.index.str.replace(' ', '_')
+
+                # Save dataframes
                 level_output_path = os.path.join(group_output_path, level)
                 os.makedirs(level_output_path, exist_ok=True)
 
@@ -355,6 +371,10 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                     raise ValueError(f"Unsupported output format: {output_format}")
 
             for level, abundance_metrics_df in values[3].items():
+                # Replace ' ' by '_' in taxa names
+                abundance_metrics_df.index = abundance_metrics_df.index.str.replace(' ', '_')
+
+                # Save dataframes
                 level_output_path = os.path.join(group_output_path, level)
                 os.makedirs(level_output_path, exist_ok=True)
 
@@ -376,6 +396,10 @@ def save_dataframes(dataframe_groups, output_path, output_format):
     
         else:
             for level, df in values.items():
+                # Replace ' ' by '_' in taxa names
+                df.index = df.index.str.replace(' ', '_')
+
+                # Save dataframes
                 file_name = f"{group_name}_{level.lower()}.{output_format}"
                 file_path = os.path.join(group_output_path, file_name)
 
