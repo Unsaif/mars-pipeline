@@ -229,7 +229,7 @@ def rename_taxa(taxonomic_dfs):
 
     return renamed_dfs
 
-def check_presence_in_modelDatabase(dataframes, whichModelDatabase="full_db"):
+def check_presence_in_modelDatabase(dataframes, whichModelDatabase="full_db", userDatabase_path=""):
     """
     Check if entries from the input DataFrames are in the model-database DataFrame under the same level column.
     Split the input DataFrames into two DataFrames: present and absent. 
@@ -239,11 +239,14 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="full_db"):
         dataframes (dict):           A dictionary containing the input DataFrames to be 
                                      checked against the model-database (currently 
                                      AGORA2 or APOLLO, or combination of both).
-        whichModelDatabase (string): A string defining if AGORA2, APOLLO, or 
-                                     combination of both should be used as model
+        whichModelDatabase (string): A string defining if AGORA2, APOLLO, a 
+                                     combination of both or a user-defined database should be used as model
                                      database to check presence in. 
-                                     Allowed Input (case-insensitive): "AGORA2", "APOLLO", "full_db".
+                                     Allowed Input (case-insensitive): "AGORA2", "APOLLO", "full_db", "user_db".
                                      Default: "full_db".
+        userDatabase_path (string):  A string containing the full path to the user-defined database,
+                                     which should be in .csv, .txt, .parquet or .xlsx format and
+                                     have column names = taxonomic levels.
 
     Returns:
         dict: A dictionary containing the present and absent DataFrames for each taxonomic level.
@@ -251,18 +254,59 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="full_db"):
     logger.info('Checking presence of taxa in model database.')
 
     resources_dir = os.path.join(os.path.dirname(__file__), 'resources')
-    modelDatabase_path = os.path.join(resources_dir, 'AGORA2_APOLLO_28112024.parquet')
-    
-    # Read in model-database as dataframe
-    modelDatabase_df = pd.read_parquet(modelDatabase_path)
+#     modelDatabase_path = os.path.join(resources_dir, 'AGORA2_APOLLO_28112024.parquet')
+#     
+#     # Read in model-database as dataframe
+#     modelDatabase_df = pd.read_parquet(modelDatabase_path)
 
     # Check, if user wants to use the AGORA2 or APOLLO database, or combination of both &
     # create subset accordingly
     if whichModelDatabase.lower() == "agora2":
+        # Read in model-database as dataframe
+        modelDatabase_path = os.path.join(resources_dir, 'AGORA2_APOLLO_28112024.parquet')
+        modelDatabase_df = pd.read_parquet(modelDatabase_path)
+
         updatedModelDatabase_df = modelDatabase_df[modelDatabase_df['Resource'] == 'AGORA2'].drop('Resource', axis=1)
     elif whichModelDatabase.lower() == "apollo":
+        # Read in model-database as dataframe
+        modelDatabase_path = os.path.join(resources_dir, 'AGORA2_APOLLO_28112024.parquet')
+        modelDatabase_df = pd.read_parquet(modelDatabase_path)
+
         updatedModelDatabase_df = modelDatabase_df[modelDatabase_df['Resource'] == 'APOLLO'].drop('Resource', axis=1)
+    elif whichModelDatabase.lower() == "user_db":
+        # Read in model-database as dataframe
+        try:
+            file_extension = userDatabase_path.type
+        except AttributeError:
+            ind = userDatabase_path.find('.')
+            extension = userDatabase_path[ind+1:]
+            if extension == 'txt':
+                file_extension = 'text/plain'
+            elif extension == 'csv':
+                file_extension = 'text/csv'
+            elif extension == 'xlsx':
+                file_extension = 'spreadsheet'
+            elif extension == 'parquet':
+                file_extension = '.parquet'
+            else:
+                file_extension = 'not found'
+        # Read the file based on its extension
+        if file_extension == 'text/plain' or file_extension == 'text/tab-separated-values':
+            # Assuming the txt file is delimited (e.g., CSV)
+            updatedModelDatabase_df = pd.read_csv(userDatabase_path, sep='\t', low_memory=False, header=0)  # Update delimiter if necessary
+        elif file_extension == 'text/csv' or file_extension == 'application/vnd.ms-excel':
+            updatedModelDatabase_df = pd.read_csv(userDatabase_path, low_memory=False, header=0)
+        elif file_extension == 'spreadsheet' or file_extension == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+            updatedModelDatabase_df = pd.read_excel(userDatabase_path, engine='openpyxl', header=0)
+        elif file_extension == '.parquet':
+            updatedModelDatabase_df = pd.read_parquet(userDatabase_path)
+        else:
+            raise ValueError(f"Unsupported file type: {file_extension}")                
     else:
+        # Read in model-database as dataframe
+        modelDatabase_path = os.path.join(resources_dir, 'AGORA2_APOLLO_28112024.parquet')
+        modelDatabase_df = pd.read_parquet(modelDatabase_path)
+
         updatedModelDatabase_df = modelDatabase_df.drop('Resource', axis=1)
 
     present_dataframes, absent_dataframes = {}, {}

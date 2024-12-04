@@ -6,7 +6,7 @@ import os
 import logging
 
 
-def process_microbial_abundances(input_file1, input_file2, output_path=None, cutoff=None, output_format="csv", stratification_file=None, flagLoneSpecies=False, taxaSplit="; ", removeCladeExtensionsFromTaxa=True, whichModelDatabase="full_db"):
+def process_microbial_abundances(input_file1, input_file2, output_path=None, cutoff=None, output_format="csv", stratification_file=None, flagLoneSpecies=False, taxaSplit="; ", removeCladeExtensionsFromTaxa=True, whichModelDatabase="full_db", userDatabase_path=""):
     # Initialize logger to generate a MARS log file    
     logger = setup_logger('main', os.path.join(output_path, 'MARS.log'))
     logger_taxa_below_cutoff = setup_logger('taxa_below_cutoff', os.path.join(output_path, 'MARS_taxaBelowCutoff.log'))
@@ -24,7 +24,7 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
 
     renamed_dataframes = rename_taxa(filtered_taxonomic_dataframes)
 
-    present_dataframes, absent_dataframes = check_presence_in_modelDatabase(renamed_dataframes, whichModelDatabase=whichModelDatabase)
+    present_dataframes, absent_dataframes = check_presence_in_modelDatabase(renamed_dataframes, whichModelDatabase=whichModelDatabase, userDatabase_path=userDatabase_path)
     
     logger.info('Normalizing pre-mapping dataframes.')
     normalized_dataframes = normalize_dataframes(renamed_dataframes, cutoff=cutoff)
