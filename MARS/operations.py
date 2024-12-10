@@ -7,6 +7,25 @@ import logging
 
 logger = logging.getLogger('main.operations')
 
+def check_df_absolute_or_relative_counts(df):
+    """
+    Checks whether dataframe read counts are absolute read counts or were 
+    already normalized to relative abundances. Sets boolean, which is used
+    in subsequent steps to avoid re-normalization & unwanted metrics calculation.
+
+    Arg:
+        df (pd.DataFrame): The input DataFrame with taxonomic groups in the index.
+    
+    Returns:
+        dfvalues_are_rel_abundances (boolean): Boolean stating if dataframe values are normalized relative abundances or not.
+    """
+    read_counts = df.sum()
+    dfvalues_are_rel_abundances = True
+    if (read_counts > 1).any():
+        dfvalues_are_rel_abundances = False
+
+    return dfvalues_are_rel_abundances
+
 def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
     """ 
     Removes clade extensions from taxonomic names at any taxonomic level (if present)
@@ -26,7 +45,7 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
     
     # Abbreviations for all taxonomic levels
     taxUnitAbbreviations = ['p__', 'c__', 'o__', 'f__', 'g__', 's__']
-    # Specifies the column in which taxonomic level is present in split name (increases by 1 with each for-loop iteration)
+    # Specifies the column for the current taxonomic level from the split name (increases by 1 with each for-loop iteration)
     columnTracker = 1
 
     for taxLevel in taxUnitAbbreviations:
@@ -38,7 +57,7 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
         taxName = taxaSep[columnTracker].astype(str)
         
         # Filter taxName with occourence of clade extensions to output in logger
-        clade_pattern = r'(_clade)?_[a-zA-Z]$|(_clade)?_[a-zA-Z]\s'        
+        clade_pattern = r'(?i)( clade) ?[a-z]$|(?i)( clade) ?[a-z]\s'        
         taxNames_wClades = taxName.str.match(clade_pattern)
         matched_taxNames = taxName.loc[taxNames_wClades].tolist()        
         if matched_taxNames:
@@ -48,8 +67,8 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
             logger.info(f"For {taxLevel} taxa no clade extension was found & removed.")
 
         # Clean taxa names using regex
-        taxName = taxName.str.replace(r'(_clade)?_[a-zA-Z]$', '', regex=True)
-        taxName = taxName.str.replace(r'(_clade)?_[a-zA-Z]\s', '', regex=True)
+        taxName = taxName.str.replace(r'(?i)( clade) ?[a-z]$', '', regex=True)
+        taxName = taxName.str.replace(r'(?i)( clade) ?[a-z]\s', '', regex=True)
                 
         # Update full taxa name (inlcuding all taxLevels) with cleaned taxa
         if taxLevel == 's__':
@@ -107,7 +126,7 @@ def split_taxonomic_groups(merged_df, flagLoneSpecies=False, taxaSplit='; '):
     # Concatenate genus and species names if both are present, otherwise leave species column unchanged
     if flagLoneSpecies:
         taxonomic_split_df['Species'] = taxonomic_split_df.apply(
-            lambda row: row['Genus'] + '_' + row['Species'] if row['Species'] != '' else row['Species'],
+            lambda row: row['Genus'] + ' ' + row['Species'] if row['Species'] != '' else row['Species'],
             axis=1
     )
 
@@ -158,17 +177,20 @@ def filter_samples_low_read_counts(taxonomic_dataframes, sample_read_counts_cuto
         
         # Subset the level dataframe only including those samples with read count higher than cutoff
         samples_higher_than_cutoff = [i for i, v in enumerate(read_counts) if v > sample_read_counts_cutoff]
-        level_filtered_taxonomic_dataframe = df.iloc[:, samples_higher_than_cutoff]
+        if samples_higher_than_cutoff:
+            level_filtered_taxonomic_dataframe = df.iloc[:, samples_higher_than_cutoff]
+        else:
+            level_filtered_taxonomic_dataframe = df
         
         filtered_taxonomic_dataframes[level] = level_filtered_taxonomic_dataframe
 
         # Identify which samples are below/equal to the threshold & log them
         samples_lower_equal_to_cutoff = [i for i, v in enumerate(read_counts) if v <= sample_read_counts_cutoff]
-        if samples_lower_equal_to_cutoff:
-            logger_output = ', '.join(samples_lower_equal_to_cutoff)
-            logger.info(f"Following {level} samples had a total read count below/equal to the cutoff & were removed: {logger_output}.")
-        else:
-            logger.info(f"No samples were below/equal to the read counts cutoff & removed.")
+#         if samples_lower_equal_to_cutoff:
+#             logger_output = ', '.join(samples_lower_equal_to_cutoff)
+#             logger.info(f"Following {level} samples had a total read count below/equal to the cutoff & were removed: {logger_output}.")
+#         else:
+#             logger.info(f"No samples were below/equal to the read counts cutoff & removed.")
 
     return filtered_taxonomic_dataframes
 
@@ -254,10 +276,6 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="full_db", us
     logger.info('Checking presence of taxa in model database.')
 
     resources_dir = os.path.join(os.path.dirname(__file__), 'resources')
-#     modelDatabase_path = os.path.join(resources_dir, 'AGORA2_APOLLO_28112024.parquet')
-#     
-#     # Read in model-database as dataframe
-#     modelDatabase_df = pd.read_parquet(modelDatabase_path)
 
     # Check, if user wants to use the AGORA2 or APOLLO database, or combination of both &
     # create subset accordingly
@@ -311,8 +329,8 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="full_db", us
 
     present_dataframes, absent_dataframes = {}, {}
     for level, input_df in dataframes.items():
-        # Remove "_" from the index of the input DataFrame and find entries present in AGORA2/APOLLO
-        present_mask = input_df.index.str.replace('_', ' ').isin(updatedModelDatabase_df[level])
+        # Find entries present in AGORA2/APOLLO
+        present_mask = input_df.index.isin(updatedModelDatabase_df[level])
         present_df = input_df.loc[present_mask]
 
         # Add "pan" prefix to the index of the present DataFrame if the level is "Species"
@@ -329,7 +347,7 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="full_db", us
     return present_dataframes, absent_dataframes
 
 
-def calculate_metrics(dataframes, group=None, cutoff=None, pre_mapping_read_counts=None):
+def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False, cutoff=None, pre_mapping_read_counts=None):
     """
     Calculate & then summarize alpha diversity metrics, read counts & Firmicutes to Bacteroidetes ratio (for pyhlum)
     to compare pre-mapping & post-mapping status & evaluate the mapping coverage.
@@ -381,8 +399,11 @@ def calculate_metrics(dataframes, group=None, cutoff=None, pre_mapping_read_coun
             mean_read_counts_df = np.mean(read_counts)
             std_read_counts_df = np.std(read_counts)
         
-        # Normalize read counts to relative abundances per taxa
-        rel_abundances = grouped_df.div(read_counts)
+        if dfvalues_are_rel_abundances == False:
+            # Normalize read counts to relative abundances per taxa
+            rel_abundances = grouped_df.div(read_counts)
+        else:
+            rel_abundances = grouped_df
 
         # Optionally apply cut-off for low abundant taxa
         if cutoff is not None:

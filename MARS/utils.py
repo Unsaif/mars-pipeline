@@ -67,7 +67,7 @@ def merge_files(file_path1, file_path2):
 
     return merged_df
 
-def normalize_dataframes(dataframes, cutoff=None, pre_mapping_read_counts=None):
+def normalize_dataframes(dataframes, dfvalues_are_rel_abundances=False, cutoff=None, pre_mapping_read_counts=None):
     """
     Normalize the taxonomic DataFrames by grouping and summing rows with the same name,
     and then normalizing each column so that the sum of each column is 1. Optionally, a
@@ -89,16 +89,19 @@ def normalize_dataframes(dataframes, cutoff=None, pre_mapping_read_counts=None):
     for level, df in dataframes.items():
         # Group by index and sum the rows with the same name
         grouped_df = df.groupby(df.index.name).sum()
-
-        # Normalize each column so that the sum of each column is 1 (either
-        # to pre-mapped total read counts, or to the subset read counts)
-        if pre_mapping_read_counts is not None:
-            read_counts = pre_mapping_read_counts[level].sum()
-        else:
-            read_counts = grouped_df.sum()
         
-        # Normalize read counts to get relative abundances of taxa
-        rel_abundances_df = grouped_df.div(read_counts)
+        if dfvalues_are_rel_abundances == False:
+            # Normalize each column so that the sum of each column is 1 (either
+            # to pre-mapped total read counts, or to the subset read counts)
+            if pre_mapping_read_counts is not None:
+                read_counts = pre_mapping_read_counts[level].sum()
+            else:
+                read_counts = grouped_df.sum()
+            
+            # Normalize read counts to get relative abundances of taxa
+            rel_abundances_df = grouped_df.div(read_counts)
+        else:
+            rel_abundances_df = grouped_df
   
         # Optionally apply cut-off for low abundance taxa. Coincidentally
         # also fixes empty cells to 0s.
@@ -120,7 +123,7 @@ def normalize_dataframes(dataframes, cutoff=None, pre_mapping_read_counts=None):
     return normalized_dfs
 
 
-def combine_metrics(metrics1, metrics2, df_type="metrics"):
+def combine_metrics(metrics1, metrics2, df_type="metrics", dfvalues_are_rel_abundances=False):
     """
     Combine the metrics from two different sets of taxonomic DataFrames into a single DataFrame for each level.
 
@@ -158,16 +161,28 @@ def combine_metrics(metrics1, metrics2, df_type="metrics"):
             combined_metric.loc[4, 'Mapping coverage'] = combined_metric.loc[4, 'Post mapping'] - combined_metric.loc[4, 'Pre mapping']
             combined_metric.loc[6, 'Mapping coverage'] = combined_metric.loc[6, 'Post mapping'] / combined_metric.loc[6, 'Pre mapping']
             
-            combined_metric['Description'] = ['The number of taxa across all samples. MappingCoverage = post mapping/pre mapping.', \
-                                              'The estimated number of taxa following standard nomenclature. Estimated by excluding all taxa whose names contain "-" &/or multiple uppercase letters in a row.', \
-                                              'Mean number of species across samples. MappingCoverage = post mapping/pre mapping.', \
-                                              'Standard deviation of species richness.', 'Mean alpha-diversity (calc. by shannon index) across samples. MappingCoverage = post mapping - pre mapping.', \
-                                             'Standard deviation of shannon index.', 'Mean number of reads across samples. MappingCoverage = post mapping/pre mapping.', \
-                                             'Standard deviation of read counts.']
+            if dfvalues_are_rel_abundances == False:
+                combined_metric['Description'] = ['The number of taxa across all samples. MappingCoverage = post mapping/pre mapping.', \
+                                                  'The estimated number of taxa following standard nomenclature. Estimated by excluding all taxa whose names contain "-" &/or multiple uppercase letters in a row.', \
+                                                  'Mean number of species across samples. MappingCoverage = post mapping/pre mapping.', \
+                                                  'Standard deviation of species richness.', 'Mean alpha-diversity (calc. by shannon index) across samples. MappingCoverage = post mapping - pre mapping.', \
+                                                 'Standard deviation of shannon index.', 'Mean number of reads across samples. MappingCoverage = post mapping/pre mapping.', \
+                                                 'Standard deviation of read counts.']
+    
+                combined_metric.index = ['Total number of taxa', 'Estimated total number of named taxa', 'Mean species richness', \
+                                         'Std species richness', 'Mean shannon index', 'Std shannon index', \
+                                         'Mean read counts', 'Std read counts']
+            else:
+                combined_metric['Description'] = ['The number of taxa across all samples. MappingCoverage = post mapping/pre mapping.', \
+                                                  'The estimated number of taxa following standard nomenclature. Estimated by excluding all taxa whose names contain "-" &/or multiple uppercase letters in a row.', \
+                                                  'Mean number of species across samples. MappingCoverage = post mapping/pre mapping.', \
+                                                  'Standard deviation of species richness.', 'Mean alpha-diversity (calc. by shannon index) across samples. MappingCoverage = post mapping - pre mapping.', \
+                                                 'Standard deviation of shannon index.', 'Mean relative abundance across samples. MappingCoverage = post mapping/pre mapping.', \
+                                                 'Standard deviation of relative abundance.']
 
-            combined_metric.index = ['Total number of taxa', 'Estimated total number of named taxa', 'Mean species richness', \
-                                     'Std species richness', 'Mean shannon index', 'Std shannon index', \
-                                     'Mean read counts', 'Std read counts']
+                combined_metric.index = ['Total number of taxa', 'Estimated total number of named taxa', 'Mean species richness', \
+                                         'Std species richness', 'Mean shannon index', 'Std shannon index', \
+                                         'Mean relative abundance', 'Std relative abundance']
             
             combined_metrics[level] = combined_metric
 
