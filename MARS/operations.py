@@ -57,7 +57,7 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
         taxName = taxaSep[columnTracker].astype(str)
         
         # Filter taxName with occourence of clade extensions to output in logger
-        clade_pattern = r'(?i)( clade) ?[a-z]$|(?i)( clade) ?[a-z]\s'        
+        clade_pattern = r'(?i)\s+(clade\s+)?[A-Z]$|(?i)\s+(clade\s+)?[A-Z]\s'        
         taxNames_wClades = taxName.str.match(clade_pattern)
         matched_taxNames = taxName.loc[taxNames_wClades].tolist()        
         if matched_taxNames:
@@ -67,8 +67,8 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
             logger.info(f"For {taxLevel} taxa no clade extension was found & removed.")
 
         # Clean taxa names using regex
-        taxName = taxName.str.replace(r'(?i)( clade) ?[a-z]$', '', regex=True)
-        taxName = taxName.str.replace(r'(?i)( clade) ?[a-z]\s', '', regex=True)
+        taxName = taxName.str.replace(r'(?i)\s+(clade\s+)?[A-Z]$', '', regex=True)
+        taxName = taxName.str.replace(r'(?i)\s+(clade\s+)?[A-Z]\s', '', regex=True)
                 
         # Update full taxa name (inlcuding all taxLevels) with cleaned taxa
         if taxLevel == 's__':
@@ -349,7 +349,7 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="full_db", us
 
 def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False, cutoff=None, pre_mapping_read_counts=None):
     """
-    Calculate & then summarize alpha diversity metrics, read counts & Firmicutes to Bacteroidetes ratio (for pyhlum)
+    Calculate & then summarize alpha & beta diversity metrics, read counts & Firmicutes to Bacteroidetes ratio (for pyhlum)
     to compare pre-mapping & post-mapping status & evaluate the mapping coverage.
 
     Args:
@@ -365,6 +365,7 @@ def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False,
     """
 
     metrics = {}
+    beta_diversity_metrics = {}
     abundance_metrics = {}
     summ_stats = {}
 
@@ -374,16 +375,6 @@ def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False,
         
         # Group by index and sum the rows with the same name
         grouped_df = df.groupby(df.index.name).sum()
-
-        # Get total number of taxa
-        num_taxa = grouped_df.shape[0]
-
-        # Estimate total number of named taxa, by checking for presence of "-"
-        # or multiple uppercase letters in a row in taxa name
-        taxa_name_contains_dash = grouped_df.index.str.contains('-')
-        taxa_name_contains_uppercase = grouped_df.index.str.contains(r'[A-Z]{2,}')
-        est_taxa_wo_standard_name = grouped_df[taxa_name_contains_dash | taxa_name_contains_uppercase]
-        est_num_taxa_w_standard_name = len(grouped_df.index) - len(est_taxa_wo_standard_name)
 
         # Calculate read counts for dataframe subset & if provided, grab total read counts pre-mapping
         if pre_mapping_read_counts is not None:
@@ -408,21 +399,38 @@ def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False,
         # Optionally apply cut-off for low abundant taxa
         if cutoff is not None:
             rel_abundances[rel_abundances <= cutoff] = 0
+        
+        # Remove taxa which are non-abundant in any sample after cutoff has been applied
+        rel_abundances = rel_abundances[(rel_abundances != 0).any(axis=1)]
+        
+        # Get total number of taxa
+        num_taxa = rel_abundances.shape[0]
 
-        # Calculate alpha diversity using the Shannon index
-        shannon_index = -1 * (rel_abundances * rel_abundances.apply(np.log)).sum()
-        mean_shannon_index = np.mean(shannon_index)
-        std_shannon_index = np.std(shannon_index)
+        # Estimate total number of named taxa, by checking for presence of "-"
+        # or multiple uppercase letters in a row in taxa name
+        taxa_name_contains_dash = rel_abundances.index.str.contains('-')
+        taxa_name_contains_uppercase = rel_abundances.index.str.contains(r'[A-Z]{2,}')
+        est_taxa_wo_standard_name = rel_abundances[taxa_name_contains_dash | taxa_name_contains_uppercase]
+        est_num_taxa_w_standard_name = len(rel_abundances.index) - len(est_taxa_wo_standard_name)
 
         # Calculate non-zero entries per column to get species richness per sample
         species_richness = (rel_abundances != 0).sum()
         mean_species_richness = np.mean(species_richness)
         std_species_richness = np.std(species_richness)
 
+        # Calculate alpha diversity using the pielou's evenness
+        shannon_index = -1 * (rel_abundances * rel_abundances.apply(np.log)).sum()
+        pielous_evenness = shannon_index / species_richness.apply(np.log)
+        mean_pielous_evenness = np.mean(pielous_evenness)
+        std_pielous_evenness = np.std(pielous_evenness)
+        
         level_metrics = {
             'read_counts': read_counts_df,
-            'shannon_index': shannon_index,
+            'pielous_evenness': pielous_evenness,
         }
+
+        # Calculate beta diversity using bray-curtis dissimilarity
+        beta_diversity_metrics[level] = calc_bray_curtis_matrix(rel_abundances)
         
         # Calculate mean + SD, min & max relative abundance of all taxa & in 
         # how many samples a taxa is present
@@ -454,7 +462,42 @@ def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False,
         metrics[level] = pd.DataFrame.from_dict(level_metrics)
         summ_stats[level] = [num_taxa, est_num_taxa_w_standard_name, \
                              mean_species_richness, std_species_richness, \
-                             mean_shannon_index, std_shannon_index, \
+                             mean_pielous_evenness, std_pielous_evenness, \
                              mean_read_counts_df, std_read_counts_df]
 
-    return metrics, abundance_metrics, summ_stats
+    return metrics, abundance_metrics, beta_diversity_metrics, summ_stats
+
+def calc_bray_curtis_matrix(rel_abundances):
+    """
+    Calculates Bray-Curtis dissimilarity matrix for all samples in a taxa abundances dataframe.
+
+    Args:
+        rel_abundances (pandas dataframe): A dataframe containing (relative) 
+                                            abundances of taxa per samples, with
+                                            columns = samples, rows = taxa.
+
+    Returns:
+        Pandas dataframe with Bray-Curtis dissimilarity matrix of pairwise sample comparisons.
+    """
+    samples = rel_abundances.columns
+    num_samples = len(samples)
+    
+    # Convert DataFrame to numpy array for faster calculations
+    abundance_array = rel_abundances.values
+    
+    # Pre-calculate sum of relative abundances for each sample
+    sample_sums = abundance_array.sum(axis=0)
+    
+    # Pre-allocate the result matrix
+    bray_curtis_matrix = np.zeros((num_samples, num_samples))
+    
+    # Calculate bray-curtis dissimilarity between all samples in pairwise manner & store in result matrix
+    for i in range(num_samples):
+        for j in range(i+1, num_samples):
+            numerator = np.sum(np.abs(abundance_array[:, i] - abundance_array[:, j]))
+            denominator = sample_sums[i] + sample_sums[j]
+            dissimilarity = numerator / denominator
+            bray_curtis_matrix[i, j] = dissimilarity
+            bray_curtis_matrix[j, i] = dissimilarity
+    
+    return pd.DataFrame(bray_curtis_matrix, index=samples, columns=samples)

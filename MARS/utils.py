@@ -92,7 +92,8 @@ def normalize_dataframes(dataframes, dfvalues_are_rel_abundances=False, cutoff=N
         
         if dfvalues_are_rel_abundances == False:
             # Normalize each column so that the sum of each column is 1 (either
-            # to pre-mapped total read counts, or to the subset read counts)
+            # to pre-mapped total read counts, or to the subset read counts for 
+            # the dataset with taxa present in model database - needs to be done for modelling to work)
             if pre_mapping_read_counts is not None:
                 read_counts = pre_mapping_read_counts[level].sum()
             else:
@@ -116,6 +117,9 @@ def normalize_dataframes(dataframes, dfvalues_are_rel_abundances=False, cutoff=N
                 logger_taxa_below_cutoff.info(f"{level} taxa whose rel.abundance was below the cutoff & therefore set to 0: {entries_below_cutoff}")
             else:
                 logger.info(f"No {level} taxa were below the cutoff.")
+        
+        # Remove taxa which are non-abundant in any sample after cutoff has been applied
+        rel_abundances_df = rel_abundances_df[(rel_abundances_df != 0).any(axis=1)]
             
         # Add the normalized DataFrame to the dictionary
         normalized_dfs[level] = rel_abundances_df
@@ -164,24 +168,24 @@ def combine_metrics(metrics1, metrics2, df_type="metrics", dfvalues_are_rel_abun
             if dfvalues_are_rel_abundances == False:
                 combined_metric['Description'] = ['The number of taxa across all samples. MappingCoverage = post mapping/pre mapping.', \
                                                   'The estimated number of taxa following standard nomenclature. Estimated by excluding all taxa whose names contain "-" &/or multiple uppercase letters in a row.', \
-                                                  'Mean number of species across samples. MappingCoverage = post mapping/pre mapping.', \
-                                                  'Standard deviation of species richness.', 'Mean alpha-diversity (calc. by shannon index) across samples. MappingCoverage = post mapping - pre mapping.', \
-                                                 'Standard deviation of shannon index.', 'Mean number of reads across samples. MappingCoverage = post mapping/pre mapping.', \
+                                                  'Mean number of taxa across samples (equals to species richness on species taxonomic level). MappingCoverage = post mapping/pre mapping.', \
+                                                  'Standard deviation of taxa richness.', 'Mean alpha-diversity (calc. by pielous evenness) in samples. Towards 0: low diversity, towards 1: high diversity, with 1: complete evenness. MappingCoverage = post mapping - pre mapping.', \
+                                                 'Standard deviation of pielous evenness.', 'Mean number of reads across samples. MappingCoverage = post mapping/pre mapping.', \
                                                  'Standard deviation of read counts.']
     
-                combined_metric.index = ['Total number of taxa', 'Estimated total number of named taxa', 'Mean species richness', \
-                                         'Std species richness', 'Mean shannon index', 'Std shannon index', \
+                combined_metric.index = ['Total number of taxa', 'Estimated total number of named taxa', 'Mean taxa richness', \
+                                         'Std taxa richness', 'Mean pielous evenness', 'Std pielous evenness', \
                                          'Mean read counts', 'Std read counts']
             else:
                 combined_metric['Description'] = ['The number of taxa across all samples. MappingCoverage = post mapping/pre mapping.', \
                                                   'The estimated number of taxa following standard nomenclature. Estimated by excluding all taxa whose names contain "-" &/or multiple uppercase letters in a row.', \
-                                                  'Mean number of species across samples. MappingCoverage = post mapping/pre mapping.', \
-                                                  'Standard deviation of species richness.', 'Mean alpha-diversity (calc. by shannon index) across samples. MappingCoverage = post mapping - pre mapping.', \
-                                                 'Standard deviation of shannon index.', 'Mean relative abundance across samples. MappingCoverage = post mapping/pre mapping.', \
+                                                  'Mean number of taxa across samples (equals to species richness on species taxonomic level). MappingCoverage = post mapping/pre mapping.', \
+                                                  'Standard deviation of taxa richness.', 'Mean alpha-diversity (calc. by pielous evenness) in samples. Towards 0: low diversity, towards 1: high diversity, with 1: complete evenness. MappingCoverage = post mapping - pre mapping.', \
+                                                 'Standard deviation of pielous evenness.', 'Mean relative abundance across samples. MappingCoverage = post mapping/pre mapping.', \
                                                  'Standard deviation of relative abundance.']
 
-                combined_metric.index = ['Total number of taxa', 'Estimated total number of named taxa', 'Mean species richness', \
-                                         'Std species richness', 'Mean shannon index', 'Std shannon index', \
+                combined_metric.index = ['Total number of taxa', 'Estimated total number of named taxa', 'Mean taxa richness', \
+                                         'Std taxa richness', 'Mean shannon index', 'Std shannon index', \
                                          'Mean relative abundance', 'Std relative abundance']
             
             combined_metrics[level] = combined_metric
@@ -318,7 +322,70 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                     abundance_metrics_df.to_json(file_path)
                 else:
                     raise ValueError(f"Unsupported output format: {output_format}")
+
+            for level, beta_diversity_df in values[5].items():
+                # Save dataframes
+                level_output_path = os.path.join(group_output_path, level)
+                os.makedirs(level_output_path, exist_ok=True)
+
+                file_name = f"preMapping_brayCurtisDissimilarity_{level}.{output_format}"
+                file_path = os.path.join(level_output_path, file_name)
+
+                if output_format == "csv":
+                    beta_diversity_df.to_csv(file_path)
+                elif output_format == "txt" or output_format == "tsv":
+                    beta_diversity_df.to_csv(file_path, sep='\t')
+                elif output_format == "excel":
+                    beta_diversity_df.to_excel(file_path)
+                elif output_format == "parquet":
+                    beta_diversity_df.to_parquet(file_path)
+                elif output_format == "json":
+                    beta_diversity_df.to_json(file_path)
+                else:
+                    raise ValueError(f"Unsupported output format: {output_format}")
         
+            for level, beta_diversity_df in values[6].items():
+                # Save dataframes
+                level_output_path = os.path.join(group_output_path, level)
+                os.makedirs(level_output_path, exist_ok=True)
+
+                file_name = f"postMapping_present_brayCurtisDissimilarity_{level}.{output_format}"
+                file_path = os.path.join(level_output_path, file_name)
+
+                if output_format == "csv":
+                    beta_diversity_df.to_csv(file_path)
+                elif output_format == "txt" or output_format == "tsv":
+                    beta_diversity_df.to_csv(file_path, sep='\t')
+                elif output_format == "excel":
+                    beta_diversity_df.to_excel(file_path)
+                elif output_format == "parquet":
+                    beta_diversity_df.to_parquet(file_path)
+                elif output_format == "json":
+                    beta_diversity_df.to_json(file_path)
+                else:
+                    raise ValueError(f"Unsupported output format: {output_format}")
+        
+            for level, beta_diversity_df in values[7].items():
+                # Save dataframes
+                level_output_path = os.path.join(group_output_path, level)
+                os.makedirs(level_output_path, exist_ok=True)
+
+                file_name = f"postMapping_absent_brayCurtisDissimilarity_{level}.{output_format}"
+                file_path = os.path.join(level_output_path, file_name)
+
+                if output_format == "csv":
+                    beta_diversity_df.to_csv(file_path)
+                elif output_format == "txt" or output_format == "tsv":
+                    beta_diversity_df.to_csv(file_path, sep='\t')
+                elif output_format == "excel":
+                    beta_diversity_df.to_excel(file_path)
+                elif output_format == "parquet":
+                    beta_diversity_df.to_parquet(file_path)
+                elif output_format == "json":
+                    beta_diversity_df.to_json(file_path)
+                else:
+                    raise ValueError(f"Unsupported output format: {output_format}")
+
         elif "_stratified_metrics" in group_name:
             for level, metrics_dataframes in values[0].items():
                 level_output_path = os.path.join(group_output_path, level)

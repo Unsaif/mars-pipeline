@@ -42,15 +42,15 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
     logger.info('Normalizing pre-mapping dataframes.')
     normalized_dataframes = normalize_dataframes(renamed_dataframes, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=cutoff)
     logger.info('Normalizing post-mapping present & absent taxa dataframes.')
-    normalized_present_dataframes, normalized_absent_dataframes = normalize_dataframes(present_dataframes, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=cutoff), normalize_dataframes(absent_dataframes, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
-    
+    normalized_present_dataframes_adj_for_modelling, normalized_present_dataframes, normalized_absent_dataframes = normalize_dataframes(present_dataframes, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=cutoff), normalize_dataframes(present_dataframes, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes), normalize_dataframes(absent_dataframes, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
+
     # Step 6.1: Calculate metrics on mapping coverage & microbiome composition
     logger.info('Calculating metrices for pre-mapping dataframes.')
-    pre_mapping_metrics, pre_mapping_abundance_metrics, pre_mapping_summ_stats = calculate_metrics(renamed_dataframes, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=cutoff)
+    pre_mapping_metrics, pre_mapping_abundance_metrics, pre_mapping_beta_diversity, pre_mapping_summ_stats = calculate_metrics(renamed_dataframes, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=cutoff)
     logger.info('Normalizing post-mapping present taxa dataframes.')
-    present_post_mapping_metrics, present_post_mapping_abundance_metrics, present_post_mapping_summ_stats = calculate_metrics(present_dataframes, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
+    present_post_mapping_metrics, present_post_mapping_abundance_metrics, present_post_mapping_beta_diversity, present_post_mapping_summ_stats = calculate_metrics(present_dataframes, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
     logger.info('Normalizing post-mapping absent taxa dataframes.')
-    absent_post_mapping_metrics, absent_post_mapping_abundance_metrics, absent_post_mapping_summ_stats = calculate_metrics(absent_dataframes, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
+    absent_post_mapping_metrics, absent_post_mapping_abundance_metrics, absent_post_mapping_beta_diversity, absent_post_mapping_summ_stats = calculate_metrics(absent_dataframes, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=cutoff, pre_mapping_read_counts=renamed_dataframes)
     
     # Step 6.2: Combine pre- and postMapping information of metrices, where needed
     logger.info('Combining metrics dataframes.')
@@ -75,15 +75,18 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
             stratification_groups[group_name] = [combined_group_metrics, combined_group_summ_stats, \
                                                 pre_group_abundance_metrics, post_group_abundance_metrics]
         logger.info(f'Stratifying taxa dataframes using following groups: {stratification_groupnames}.')
-    
+
     # Step 7: Store all results dataframe in structure & save, if output-path is provided
     dataframe_groups = {'normalized': normalized_dataframes, 
-                        'present': normalized_present_dataframes, 
+                        'present': normalized_present_dataframes_adj_for_modelling, 
                         'absent': normalized_absent_dataframes,
                         'metrics': [combined_metrics, combined_summ_stats, \
                                     pre_mapping_abundance_metrics, \
                                    present_post_mapping_abundance_metrics, \
-                                   absent_post_mapping_abundance_metrics]}
+                                   absent_post_mapping_abundance_metrics, \
+                                   pre_mapping_beta_diversity, \
+                                   present_post_mapping_beta_diversity, \
+                                   absent_post_mapping_beta_diversity]}
     
     dataframe_groups.update(stratification_groups)
 
