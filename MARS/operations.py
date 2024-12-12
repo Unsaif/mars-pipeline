@@ -1,3 +1,4 @@
+from MARS.utils import read_file_as_dataframe
 import pandas as pd
 import json
 import os
@@ -26,10 +27,13 @@ def check_df_absolute_or_relative_counts(df):
 
     return dfvalues_are_rel_abundances
 
+
 def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
     """ 
     Removes clade extensions from taxonomic names at any taxonomic level (if present)
-    and sums counts of all clades of each taxa together.
+    and sums counts of all clades of each taxa together, because most taxa with clade extensions
+    will not be present in AGORA2/APOLLO and would therefore be set to absent, but their
+    according taxa without the clade extension could be present.
 
     Args:
         merged_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index.
@@ -111,8 +115,6 @@ def split_taxonomic_groups(merged_df, flagLoneSpecies=False, taxaSplit='; '):
     levels = ['Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species']
 
     # Replace all level indicators in the 'Taxon' column
-    # Added drop=True argument as indexing of merged_df is reset within 
-    # remove_clades_from_taxaNames function - JW
     merged_df = merged_df.reset_index(drop=True)
     
     merged_df['Taxon'] = merged_df['Taxon'].replace(".__", "", regex=True)
@@ -162,13 +164,18 @@ def filter_samples_low_read_counts(taxonomic_dataframes, sample_read_counts_cuto
     Args:
         taxonomic_dataframes (dict):        A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
         sample_read_counts_cutoff (int):    A cutoff for minimal read counts in a sample to be included in downstream analysis.
-                                            Defaults to 1.
+                                            Defaults to 1, and is min = 1.
 
     Returns:
         filtered_taxonomic_dataframes (dict): A dictionary with keys as taxonomic levels and values as the corresponding DataFrames,
                                             only with samples containing more reads than the cutoff.
     """
     logger.info('Filtering taxonomic dataframes for samples with read counts below/equal to cutoff (currently 1 read).')
+    
+    # If sample_read_counts_cutoff is lower than 1, set it to 1 to ensure that there are no samples
+    # with 0 read counts, which would cause MgPipe to crash
+    if sample_read_counts_cutoff < 1:
+        sample_read_counts_cutoff = 1
 
     filtered_taxonomic_dataframes = {}
 
@@ -176,23 +183,33 @@ def filter_samples_low_read_counts(taxonomic_dataframes, sample_read_counts_cuto
         read_counts = df.sum()
         
         # Subset the level dataframe only including those samples with read count higher than cutoff
-        samples_higher_than_cutoff = [i for i, v in enumerate(read_counts) if v > sample_read_counts_cutoff]
-        if samples_higher_than_cutoff:
-            level_filtered_taxonomic_dataframe = df.iloc[:, samples_higher_than_cutoff]
+        samples_equal_or_higher_than_cutoff = [i for i, v in enumerate(read_counts) if v >= sample_read_counts_cutoff]
+        if samples_equal_or_higher_than_cutoff:
+            level_filtered_taxonomic_dataframe = df.iloc[:, samples_equal_or_higher_than_cutoff]
+
+            # Identify which samples are below the threshold, therefore excluded & log them
+            samples_lower_than_cutoff = [i for i, v in enumerate(read_counts) if v < sample_read_counts_cutoff]
+            if samples_lower_than_cutoff:
+                logger_output = ', '.join(samples_lower_than_cutoff)
+                logger.info(f"Following {level} samples had a total read count below the cutoff & were removed: {logger_output}.")
+            else:
+                logger.info(f"No samples were below the read counts cutoff & removed.")
         else:
-            level_filtered_taxonomic_dataframe = df
+            raise too_low_read_counts_error()
         
         filtered_taxonomic_dataframes[level] = level_filtered_taxonomic_dataframe
 
-        # Identify which samples are below/equal to the threshold & log them
-        samples_lower_equal_to_cutoff = [i for i, v in enumerate(read_counts) if v <= sample_read_counts_cutoff]
-#         if samples_lower_equal_to_cutoff:
-#             logger_output = ', '.join(samples_lower_equal_to_cutoff)
-#             logger.info(f"Following {level} samples had a total read count below/equal to the cutoff & were removed: {logger_output}.")
-#         else:
-#             logger.info(f"No samples were below/equal to the read counts cutoff & removed.")
-
     return filtered_taxonomic_dataframes
+
+
+class too_low_read_counts_error(Exception):
+    """
+    Exception raised in function 'filter_samples_low_read_counts' when all 
+    samples have read counts below the threshold and subsequent analysis can not be run.
+    """
+    def __init__(self, message="All samples have read counts below the sample_read_counts_cutoff (which defaults to 1, with min=1). Therefore, no subsequent analysis can be run."):
+        self.message = message
+        super().__init__(self.message)
 
 
 def rename_taxa(taxonomic_dfs):
@@ -251,6 +268,7 @@ def rename_taxa(taxonomic_dfs):
 
     return renamed_dfs
 
+
 def check_presence_in_modelDatabase(dataframes, whichModelDatabase="full_db", userDatabase_path=""):
     """
     Check if entries from the input DataFrames are in the model-database DataFrame under the same level column.
@@ -293,33 +311,7 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="full_db", us
         updatedModelDatabase_df = modelDatabase_df[modelDatabase_df['Resource'] == 'APOLLO'].drop('Resource', axis=1)
     elif whichModelDatabase.lower() == "user_db":
         # Read in model-database as dataframe
-        try:
-            file_extension = userDatabase_path.type
-        except AttributeError:
-            ind = userDatabase_path.find('.')
-            extension = userDatabase_path[ind+1:]
-            if extension == 'txt':
-                file_extension = 'text/plain'
-            elif extension == 'csv':
-                file_extension = 'text/csv'
-            elif extension == 'xlsx':
-                file_extension = 'spreadsheet'
-            elif extension == 'parquet':
-                file_extension = '.parquet'
-            else:
-                file_extension = 'not found'
-        # Read the file based on its extension
-        if file_extension == 'text/plain' or file_extension == 'text/tab-separated-values':
-            # Assuming the txt file is delimited (e.g., CSV)
-            updatedModelDatabase_df = pd.read_csv(userDatabase_path, sep='\t', low_memory=False, header=0)  # Update delimiter if necessary
-        elif file_extension == 'text/csv' or file_extension == 'application/vnd.ms-excel':
-            updatedModelDatabase_df = pd.read_csv(userDatabase_path, low_memory=False, header=0)
-        elif file_extension == 'spreadsheet' or file_extension == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
-            updatedModelDatabase_df = pd.read_excel(userDatabase_path, engine='openpyxl', header=0)
-        elif file_extension == '.parquet':
-            updatedModelDatabase_df = pd.read_parquet(userDatabase_path)
-        else:
-            raise ValueError(f"Unsupported file type: {file_extension}")                
+        updatedModelDatabase_df = read_file_as_dataframe(userDatabase_path, header=0)               
     else:
         # Read in model-database as dataframe
         modelDatabase_path = os.path.join(resources_dir, 'AGORA2_APOLLO_28112024.parquet')
@@ -430,7 +422,8 @@ def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False,
         }
 
         # Calculate beta diversity using bray-curtis dissimilarity
-        beta_diversity_metrics[level] = calc_bray_curtis_matrix(rel_abundances)
+        beta_diversity_metrics[level] = pd.DataFrame()
+#         beta_diversity_metrics[level] = calc_bray_curtis_matrix(rel_abundances)
         
         # Calculate mean + SD, min & max relative abundance of all taxa & in 
         # how many samples a taxa is present

@@ -6,8 +6,23 @@ import logging
 logger = logging.getLogger('main.utils')
 logger_taxa_below_cutoff = logging.getLogger('taxa_below_cutoff.utils')
 
-def read_file_as_dataframe(file_path, header):
+def read_file_as_dataframe(file_path, header=0, index_col=None):
+    """
+    Reads a file into a pandas DataFrame based on its extension.
+
+    Args:
+        file_path (str): Path to the file.
+        header (int): Row number to use as column names (default is 0).
+        index_col (int or None): Column to use as the row labels of the DataFrame (default is None).
+
+    Returns:
+        pd.DataFrame: A pandas DataFrame containing the data from the file.
+    """
     # Extract the file extension
+    _, extension = os.path.splitext(file_path)
+    extension = extension.lower()
+
+    # Map extensions to file types
     try:
         file_extension = file_path.type
     except AttributeError:
@@ -21,18 +36,19 @@ def read_file_as_dataframe(file_path, header):
             file_extension = 'spreadsheet'
         else:
             file_extension = 'not found'
-    # Read the file based on its extension
-    if file_extension == 'text/plain' or file_extension == 'text/tab-separated-values':
-        # Assuming the txt file is delimited (e.g., CSV)
-        return pd.read_csv(file_path, sep='\t', index_col=[0], low_memory=False, header=header)  # Update delimiter if necessary
-    elif file_extension == 'text/csv' or file_extension == 'application/vnd.ms-excel':
-        return pd.read_csv(file_path, index_col=[0], low_memory=False, header=header)
-    elif file_extension == 'spreadsheet' or file_extension == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
-        # Removed low_memory input argument as it seems it is not longer accepted in the pd.read_excel function
-        # return pd.read_excel(file_path, engine='openpyxl', index_col=[0], low_memory=False, header=header)
-        return pd.read_excel(file_path, engine='openpyxl', index_col=[0], header=header)
+
+    # Read the file based on its type
+    if file_extension in ['text/plain', 'text/csv', 'text/tab-separated-values']:
+        # Assuming text files are tab-separated by default; adjust delimiter as needed
+        delimiter = '\t' if file_extension == 'text/plain' else ','
+        return pd.read_csv(file_path, sep=delimiter, index_col=index_col, low_memory=False, header=header)
+    elif file_extension == 'spreadsheet'or file_extension == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+        return pd.read_excel(file_path, engine='openpyxl', index_col=index_col, header=header)
+    elif file_extension == '.parquet':
+        return pd.read_parquet(file_path)
     else:
         raise ValueError(f"Unsupported file type: {file_extension}")
+
 
 def merge_files(file_path1, file_path2):
     """
@@ -49,11 +65,11 @@ def merge_files(file_path1, file_path2):
     # Read input files into pandas DataFrames  
     
     if file_path2 == None:
-        df1 = read_file_as_dataframe(file_path1, 0)
+        df1 = read_file_as_dataframe(file_path1, header=0, index_col=0)
         merged_df = df1
     else:
-        df1 = read_file_as_dataframe(file_path1, 0)
-        df2 = read_file_as_dataframe(file_path2, 1) 
+        df1 = read_file_as_dataframe(file_path1, header=0, index_col=0)
+        df2 = read_file_as_dataframe(file_path2, header=1, index_col=0) 
         # Merge DataFrames using their index values
         merged_df = pd.merge(df1, df2, left_index=True, right_index=True, how='inner')
         # Drop the 'Confidence' column
@@ -67,18 +83,19 @@ def merge_files(file_path1, file_path2):
 
     return merged_df
 
+
 def normalize_dataframes(dataframes, dfvalues_are_rel_abundances=False, cutoff=None, pre_mapping_read_counts=None):
     """
-    Normalize the taxonomic DataFrames by grouping and summing rows with the same name,
-    and then normalizing each column so that the sum of each column is 1. Optionally, a
-    cut-off can be provided to filter out low abundance taxa before normalization.
+    Normalize the taxonomic DataFrames by first grouping and summing rows with the same name,
+    and then calculating the relative abundances per taxa so that the sum of each sample (each column) is 1.
+    Optionally, a cut-off can be provided to filter out low abundance taxa before normalization.
 
     Args:
-        dataframes (dict): A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
-        cutoff (float, optional): A cut-off value for filtering out low abundance taxa. Defaults to None.
+        dataframes (dict):          A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
+        cutoff (float, optional):   A cut-off value for filtering out low abundance taxa. Defaults to None.
         pre_mapping_read_counts (int64 list, optional): A list containing per-sample total read counts pre-mapping,
-                                allowing for taxa abundance normalization against pre-mapped total read counts.
-                                Defaults to None.
+                                    allowing for taxa abundance normalization against pre-mapped total read counts.
+                                    Defaults to None.
 
     Returns:
         dict: A dictionary with keys as taxonomic levels and values as the normalized DataFrames.
