@@ -1,3 +1,4 @@
+from MARS.utils import read_file_as_dataframe
 import pandas as pd
 import json
 import os
@@ -26,10 +27,13 @@ def check_df_absolute_or_relative_counts(df):
 
     return dfvalues_are_rel_abundances
 
+
 def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
     """ 
     Removes clade extensions from taxonomic names at any taxonomic level (if present)
-    and sums counts of all clades of each taxa together.
+    and sums counts of all clades of each taxa together, because most taxa with clade extensions
+    will not be present in AGORA2/APOLLO and would therefore be set to absent, but their
+    according taxa without the clade extension could be present.
 
     Args:
         merged_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index.
@@ -57,7 +61,7 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
         taxName = taxaSep[columnTracker].astype(str)
         
         # Filter taxName with occourence of clade extensions to output in logger
-        clade_pattern = r'(?i)( clade) ?[a-z]$|(?i)( clade) ?[a-z]\s'        
+        clade_pattern = r'(?i)\s+(clade\s+)?[A-Z]$|(?i)\s+(clade\s+)?[A-Z]\s'        
         taxNames_wClades = taxName.str.match(clade_pattern)
         matched_taxNames = taxName.loc[taxNames_wClades].tolist()        
         if matched_taxNames:
@@ -67,8 +71,8 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
             logger.info(f"For {taxLevel} taxa no clade extension was found & removed.")
 
         # Clean taxa names using regex
-        taxName = taxName.str.replace(r'(?i)( clade) ?[a-z]$', '', regex=True)
-        taxName = taxName.str.replace(r'(?i)( clade) ?[a-z]\s', '', regex=True)
+        taxName = taxName.str.replace(r'(?i)\s+(clade\s+)?[A-Z]$', '', regex=True)
+        taxName = taxName.str.replace(r'(?i)\s+(clade\s+)?[A-Z]\s', '', regex=True)
                 
         # Update full taxa name (inlcuding all taxLevels) with cleaned taxa
         if taxLevel == 's__':
@@ -111,8 +115,6 @@ def split_taxonomic_groups(merged_df, flagLoneSpecies=False, taxaSplit='; '):
     levels = ['Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species']
 
     # Replace all level indicators in the 'Taxon' column
-    # Added drop=True argument as indexing of merged_df is reset within 
-    # remove_clades_from_taxaNames function - JW
     merged_df = merged_df.reset_index(drop=True)
     
     merged_df['Taxon'] = merged_df['Taxon'].replace(".__", "", regex=True)
@@ -162,13 +164,18 @@ def filter_samples_low_read_counts(taxonomic_dataframes, sample_read_counts_cuto
     Args:
         taxonomic_dataframes (dict):        A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
         sample_read_counts_cutoff (int):    A cutoff for minimal read counts in a sample to be included in downstream analysis.
-                                            Defaults to 1.
+                                            Defaults to 1, and is min = 1.
 
     Returns:
         filtered_taxonomic_dataframes (dict): A dictionary with keys as taxonomic levels and values as the corresponding DataFrames,
                                             only with samples containing more reads than the cutoff.
     """
     logger.info('Filtering taxonomic dataframes for samples with read counts below/equal to cutoff (currently 1 read).')
+    
+    # If sample_read_counts_cutoff is lower than 1, set it to 1 to ensure that there are no samples
+    # with 0 read counts, which would cause MgPipe to crash
+    if sample_read_counts_cutoff < 1:
+        sample_read_counts_cutoff = 1
 
     filtered_taxonomic_dataframes = {}
 
@@ -176,23 +183,33 @@ def filter_samples_low_read_counts(taxonomic_dataframes, sample_read_counts_cuto
         read_counts = df.sum()
         
         # Subset the level dataframe only including those samples with read count higher than cutoff
-        samples_higher_than_cutoff = [i for i, v in enumerate(read_counts) if v > sample_read_counts_cutoff]
-        if samples_higher_than_cutoff:
-            level_filtered_taxonomic_dataframe = df.iloc[:, samples_higher_than_cutoff]
+        samples_equal_or_higher_than_cutoff = [i for i, v in enumerate(read_counts) if v >= sample_read_counts_cutoff]
+        if samples_equal_or_higher_than_cutoff:
+            level_filtered_taxonomic_dataframe = df.iloc[:, samples_equal_or_higher_than_cutoff]
+
+            # Identify which samples are below the threshold, therefore excluded & log them
+            samples_lower_than_cutoff = [i for i, v in enumerate(read_counts) if v < sample_read_counts_cutoff]
+            if samples_lower_than_cutoff:
+                logger_output = ', '.join(samples_lower_than_cutoff)
+                logger.info(f"Following {level} samples had a total read count below the cutoff & were removed: {logger_output}.")
+            else:
+                logger.info(f"No samples were below the read counts cutoff & removed.")
         else:
-            level_filtered_taxonomic_dataframe = df
+            raise too_low_read_counts_error()
         
         filtered_taxonomic_dataframes[level] = level_filtered_taxonomic_dataframe
 
-        # Identify which samples are below/equal to the threshold & log them
-        samples_lower_equal_to_cutoff = [i for i, v in enumerate(read_counts) if v <= sample_read_counts_cutoff]
-#         if samples_lower_equal_to_cutoff:
-#             logger_output = ', '.join(samples_lower_equal_to_cutoff)
-#             logger.info(f"Following {level} samples had a total read count below/equal to the cutoff & were removed: {logger_output}.")
-#         else:
-#             logger.info(f"No samples were below/equal to the read counts cutoff & removed.")
-
     return filtered_taxonomic_dataframes
+
+
+class too_low_read_counts_error(Exception):
+    """
+    Exception raised in function 'filter_samples_low_read_counts' when all 
+    samples have read counts below the threshold and subsequent analysis can not be run.
+    """
+    def __init__(self, message="All samples have read counts below the sample_read_counts_cutoff (which defaults to 1, with min=1). Therefore, no subsequent analysis can be run."):
+        self.message = message
+        super().__init__(self.message)
 
 
 def rename_taxa(taxonomic_dfs):
@@ -251,6 +268,7 @@ def rename_taxa(taxonomic_dfs):
 
     return renamed_dfs
 
+
 def check_presence_in_modelDatabase(dataframes, whichModelDatabase="full_db", userDatabase_path=""):
     """
     Check if entries from the input DataFrames are in the model-database DataFrame under the same level column.
@@ -293,33 +311,7 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="full_db", us
         updatedModelDatabase_df = modelDatabase_df[modelDatabase_df['Resource'] == 'APOLLO'].drop('Resource', axis=1)
     elif whichModelDatabase.lower() == "user_db":
         # Read in model-database as dataframe
-        try:
-            file_extension = userDatabase_path.type
-        except AttributeError:
-            ind = userDatabase_path.find('.')
-            extension = userDatabase_path[ind+1:]
-            if extension == 'txt':
-                file_extension = 'text/plain'
-            elif extension == 'csv':
-                file_extension = 'text/csv'
-            elif extension == 'xlsx':
-                file_extension = 'spreadsheet'
-            elif extension == 'parquet':
-                file_extension = '.parquet'
-            else:
-                file_extension = 'not found'
-        # Read the file based on its extension
-        if file_extension == 'text/plain' or file_extension == 'text/tab-separated-values':
-            # Assuming the txt file is delimited (e.g., CSV)
-            updatedModelDatabase_df = pd.read_csv(userDatabase_path, sep='\t', low_memory=False, header=0)  # Update delimiter if necessary
-        elif file_extension == 'text/csv' or file_extension == 'application/vnd.ms-excel':
-            updatedModelDatabase_df = pd.read_csv(userDatabase_path, low_memory=False, header=0)
-        elif file_extension == 'spreadsheet' or file_extension == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
-            updatedModelDatabase_df = pd.read_excel(userDatabase_path, engine='openpyxl', header=0)
-        elif file_extension == '.parquet':
-            updatedModelDatabase_df = pd.read_parquet(userDatabase_path)
-        else:
-            raise ValueError(f"Unsupported file type: {file_extension}")                
+        updatedModelDatabase_df = read_file_as_dataframe(userDatabase_path, header=0)               
     else:
         # Read in model-database as dataframe
         modelDatabase_path = os.path.join(resources_dir, 'AGORA2_APOLLO_28112024.parquet')
@@ -349,7 +341,7 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="full_db", us
 
 def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False, cutoff=None, pre_mapping_read_counts=None):
     """
-    Calculate & then summarize alpha diversity metrics, read counts & Firmicutes to Bacteroidetes ratio (for pyhlum)
+    Calculate & then summarize alpha & beta diversity metrics, read counts & Firmicutes to Bacteroidetes ratio (for pyhlum)
     to compare pre-mapping & post-mapping status & evaluate the mapping coverage.
 
     Args:
@@ -365,6 +357,7 @@ def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False,
     """
 
     metrics = {}
+    beta_diversity_metrics = {}
     abundance_metrics = {}
     summ_stats = {}
 
@@ -374,16 +367,6 @@ def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False,
         
         # Group by index and sum the rows with the same name
         grouped_df = df.groupby(df.index.name).sum()
-
-        # Get total number of taxa
-        num_taxa = grouped_df.shape[0]
-
-        # Estimate total number of named taxa, by checking for presence of "-"
-        # or multiple uppercase letters in a row in taxa name
-        taxa_name_contains_dash = grouped_df.index.str.contains('-')
-        taxa_name_contains_uppercase = grouped_df.index.str.contains(r'[A-Z]{2,}')
-        est_taxa_wo_standard_name = grouped_df[taxa_name_contains_dash | taxa_name_contains_uppercase]
-        est_num_taxa_w_standard_name = len(grouped_df.index) - len(est_taxa_wo_standard_name)
 
         # Calculate read counts for dataframe subset & if provided, grab total read counts pre-mapping
         if pre_mapping_read_counts is not None:
@@ -408,21 +391,38 @@ def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False,
         # Optionally apply cut-off for low abundant taxa
         if cutoff is not None:
             rel_abundances[rel_abundances <= cutoff] = 0
+        
+        # Remove taxa which are non-abundant in any sample after cutoff has been applied
+        rel_abundances = rel_abundances[(rel_abundances != 0).any(axis=1)]
+        
+        # Get total number of taxa
+        num_taxa = rel_abundances.shape[0]
 
-        # Calculate alpha diversity using the Shannon index
-        shannon_index = -1 * (rel_abundances * rel_abundances.apply(np.log)).sum()
-        mean_shannon_index = np.mean(shannon_index)
-        std_shannon_index = np.std(shannon_index)
+        # Estimate total number of named taxa, by checking for presence of "-"
+        # or multiple uppercase letters in a row in taxa name
+        taxa_name_contains_dash = rel_abundances.index.str.contains('-')
+        taxa_name_contains_uppercase = rel_abundances.index.str.contains(r'[A-Z]{2,}')
+        est_taxa_wo_standard_name = rel_abundances[taxa_name_contains_dash | taxa_name_contains_uppercase]
+        est_num_taxa_w_standard_name = len(rel_abundances.index) - len(est_taxa_wo_standard_name)
 
         # Calculate non-zero entries per column to get species richness per sample
         species_richness = (rel_abundances != 0).sum()
         mean_species_richness = np.mean(species_richness)
         std_species_richness = np.std(species_richness)
 
+        # Calculate alpha diversity using the pielou's evenness
+        shannon_index = -1 * (rel_abundances * rel_abundances.apply(np.log)).sum()
+        pielous_evenness = shannon_index / species_richness.apply(np.log)
+        mean_pielous_evenness = np.mean(pielous_evenness)
+        std_pielous_evenness = np.std(pielous_evenness)
+        
         level_metrics = {
             'read_counts': read_counts_df,
-            'shannon_index': shannon_index,
+            'pielous_evenness': pielous_evenness,
         }
+
+        # Calculate beta diversity using bray-curtis dissimilarity
+        beta_diversity_metrics[level] = calc_bray_curtis_matrix(rel_abundances)
         
         # Calculate mean + SD, min & max relative abundance of all taxa & in 
         # how many samples a taxa is present
@@ -454,7 +454,42 @@ def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False,
         metrics[level] = pd.DataFrame.from_dict(level_metrics)
         summ_stats[level] = [num_taxa, est_num_taxa_w_standard_name, \
                              mean_species_richness, std_species_richness, \
-                             mean_shannon_index, std_shannon_index, \
+                             mean_pielous_evenness, std_pielous_evenness, \
                              mean_read_counts_df, std_read_counts_df]
 
-    return metrics, abundance_metrics, summ_stats
+    return metrics, abundance_metrics, beta_diversity_metrics, summ_stats
+
+def calc_bray_curtis_matrix(rel_abundances):
+    """
+    Calculates Bray-Curtis dissimilarity matrix for all samples in a taxa abundances dataframe.
+
+    Args:
+        rel_abundances (pandas dataframe): A dataframe containing (relative) 
+                                            abundances of taxa per samples, with
+                                            columns = samples, rows = taxa.
+
+    Returns:
+        Pandas dataframe with Bray-Curtis dissimilarity matrix of pairwise sample comparisons.
+    """
+    samples = rel_abundances.columns
+    num_samples = len(samples)
+    
+    # Convert DataFrame to numpy array for faster calculations
+    abundance_array = rel_abundances.values
+    
+    # Pre-calculate sum of relative abundances for each sample
+    sample_sums = abundance_array.sum(axis=0)
+    
+    # Pre-allocate the result matrix
+    bray_curtis_matrix = np.zeros((num_samples, num_samples))
+    
+    # Calculate bray-curtis dissimilarity between all samples in pairwise manner & store in result matrix
+    for i in range(num_samples):
+        for j in range(i+1, num_samples):
+            numerator = np.sum(np.abs(abundance_array[:, i] - abundance_array[:, j]))
+            denominator = sample_sums[i] + sample_sums[j]
+            dissimilarity = numerator / denominator
+            bray_curtis_matrix[i, j] = dissimilarity
+            bray_curtis_matrix[j, i] = dissimilarity
+    
+    return pd.DataFrame(bray_curtis_matrix, index=samples, columns=samples)
