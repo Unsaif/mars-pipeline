@@ -422,8 +422,7 @@ def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False,
         }
 
         # Calculate beta diversity using bray-curtis dissimilarity
-        beta_diversity_metrics[level] = pd.DataFrame()
-#         beta_diversity_metrics[level] = calc_bray_curtis_matrix(rel_abundances)
+        beta_diversity_metrics[level] = calc_bray_curtis_matrix(rel_abundances)
         
         # Calculate mean + SD, min & max relative abundance of all taxa & in 
         # how many samples a taxa is present
