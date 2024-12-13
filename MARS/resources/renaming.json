@@ -17,7 +17,6 @@
         " CAG.*$"
     ],
     {
-        "\\|": ";",
         "_Family_XI_Incertae_Sedis": " Incertae Sedis XI",
         "_Family_XIII_Incertae_Sedis": " Incertae Sedis XIII",
         " Family XI Incertae Sedis": " Incertae Sedis XI",

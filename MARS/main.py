@@ -11,36 +11,43 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
     logger = setup_logger('main', os.path.join(output_path, 'MARS.log'))
     logger_taxa_below_cutoff = setup_logger('taxa_below_cutoff', os.path.join(output_path, 'MARS_taxaBelowCutoff.log'))
     
-    logger.info(f'INPUTS - taxaSplit: {taxaSplit}, flagLoneSpecies: {flagLoneSpecies}, cutoff: {cutoff}, removeCladeExtensionsFromTaxa: {removeCladeExtensionsFromTaxa}, whichModelDatabase: {whichModelDatabase}.')
+    logger.info(f'INPUTS - taxaSplit: {taxaSplit}, flagLoneSpecies: {flagLoneSpecies}, sample_read_counts_cutoff: {sample_read_counts_cutoff}, cutoff: {cutoff}, removeCladeExtensionsFromTaxa: {removeCladeExtensionsFromTaxa}, whichModelDatabase: {whichModelDatabase}, userDatabase_path (if whichModelDatabase is set to "user_db"): {userDatabase_path}.')
     
     # Run MARS
     # Step 1.1: Read in input file(s) & merge dataframes when abundances + taxa names are stored seperately
     merged_dataframe = merge_files(input_file1, input_file2)
-    # Step 1.2: Replace potential "_" between Genus & epithet in species name by " "
-    merged_dataframe.index = merged_dataframe.index.str.replace(r'(?<!_)_(?!_)', ' ', regex=True)
-    # Step 1.3: Check whether the dataframe contains absolute read counts or relative abundances and 
+    # Step 1.2: Sum read counts (or relative abundances) for same taxa (sanity check)
+    uniqueTaxa_dataframe = merged_dataframe.groupby(merged_dataframe.index.name).sum()
+    # Step 1.3: Get subset of dataframe which contains species
+    uniqueSpecies_dataframe = uniqueTaxa_dataframe[uniqueTaxa_dataframe.index.str.contains("s__")]
+    # Step 1.4: Replace potential "_" between Genus & epithet in species name by " "
+    uniqueSpecies_dataframe.index = uniqueSpecies_dataframe.index.str.replace(r'(?<!_)_(?!_)', ' ', regex=True)
+    # Step 1.5: Check whether the dataframe contains absolute read counts or relative abundances and 
     # set boolean accordingly for subsequent steps
-    dfvalues_are_rel_abundances = check_df_absolute_or_relative_counts(merged_dataframe)
+    dfvalues_are_rel_abundances = check_df_absolute_or_relative_counts(uniqueSpecies_dataframe)
 
     # Optional Step: Remove potential clade extensions (e.g. "clade A"; " A") from taxa namings if set true
     if removeCladeExtensionsFromTaxa == True:
-        merged_dataframe = remove_clades_from_taxaNames(merged_dataframe, taxaSplit=taxaSplit)
-    
-    # Step 2: Seperate merged dataframe by taxonomic levels (one df per taxonomic level)
-    taxonomic_dataframes = split_taxonomic_groups(merged_dataframe, flagLoneSpecies=flagLoneSpecies, taxaSplit=taxaSplit)
-    
+        uniqueSpecies_dataframe = remove_clades_from_taxaNames(uniqueSpecies_dataframe, taxaSplit=taxaSplit)
+        uniqueSpecies_dataframe = uniqueSpecies_dataframe.set_index('Taxon')
+
+    # Step 2: Rename taxa according to resources/renaming.json to share same nomenclature as the model-database
+    renamed_dataframe = rename_taxa(uniqueSpecies_dataframe)
+
     # Optional Step: Filter out samples with too few total reads from subsequent analysis in case input 
     # is in absolute counts (not relative abundance)
     if dfvalues_are_rel_abundances == False:
-        taxonomic_dataframes = filter_samples_low_read_counts(taxonomic_dataframes, sample_read_counts_cutoff=sample_read_counts_cutoff)
+        renamed_dataframe = filter_samples_low_read_counts(renamed_dataframe, sample_read_counts_cutoff=sample_read_counts_cutoff)
     
-    # Step 3: Rename taxa according to resources/renaming.json to share same nomenclature as the model-database
-    renamed_dataframes = rename_taxa(taxonomic_dataframes)
-    
-    # Step 4: Check for presence of input taxa in a specified model database (AGORA2, APOLLO, 
+    # Step 3: Check for presence of input taxa in a specified model database (AGORA2, APOLLO, 
     # combination of both or user-defined)
-    present_dataframes, absent_dataframes = check_presence_in_modelDatabase(renamed_dataframes, whichModelDatabase=whichModelDatabase, userDatabase_path=userDatabase_path)
+    present_dataframe, absent_dataframe = check_presence_in_modelDatabase(renamed_dataframe, whichModelDatabase=whichModelDatabase, userDatabase_path=userDatabase_path, taxaSplit=taxaSplit)
     
+    # Step 4: Seperate merged dataframe by taxonomic levels (one df per taxonomic level)
+    renamed_dataframes = split_taxonomic_groups(renamed_dataframe, flagLoneSpecies=flagLoneSpecies, taxaSplit=taxaSplit)
+    present_dataframes = split_taxonomic_groups(present_dataframe, flagLoneSpecies=flagLoneSpecies, taxaSplit=taxaSplit)
+    absent_dataframes = split_taxonomic_groups(absent_dataframe, flagLoneSpecies=flagLoneSpecies, taxaSplit=taxaSplit)
+
     # Step 5: Normalize read counts to obtain realtive abundances
     logger.info('Normalizing pre-mapping dataframes.')
     normalized_dataframes = normalize_dataframes(renamed_dataframes, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=cutoff)

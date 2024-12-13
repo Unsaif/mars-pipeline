@@ -53,36 +53,37 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
     columnTracker = 1
 
     for taxLevel in taxUnitAbbreviations:
-        # Filter taxa that contain taxLevel & split the strings by ';'
+        # Filter taxa that contain taxLevel & split the strings by the specified taxaSplit
         taxa_wTaxLevel = taxa[taxa.str.contains(taxLevel)]
-        taxaSep = taxa_wTaxLevel.str.split(taxaSplit, expand=True)
-    
-        # Extract taxa names from the taxLevel column
-        taxName = taxaSep[columnTracker].astype(str)
+        if len(taxa_wTaxLevel) > 0:
+            taxaSep = taxa_wTaxLevel.str.split(taxaSplit, expand=True)
         
-        # Filter taxName with occourence of clade extensions to output in logger
-        clade_pattern = r'(?i)\s+(clade\s+)?[A-Z]$|(?i)\s+(clade\s+)?[A-Z]\s'        
-        taxNames_wClades = taxName.str.match(clade_pattern)
-        matched_taxNames = taxName.loc[taxNames_wClades].tolist()        
-        if matched_taxNames:
-            logger_output = ', '.join(matched_taxNames)
-            logger.info(f"List of {taxLevel} taxa for which clade extension was found & removed: {logger_output}.")
-        else:
-            logger.info(f"For {taxLevel} taxa no clade extension was found & removed.")
-
-        # Clean taxa names using regex
-        taxName = taxName.str.replace(r'(?i)\s+(clade\s+)?[A-Z]$', '', regex=True)
-        taxName = taxName.str.replace(r'(?i)\s+(clade\s+)?[A-Z]\s', '', regex=True)
-                
-        # Update full taxa name (inlcuding all taxLevels) with cleaned taxa
-        if taxLevel == 's__':
-            taxaUpdate = pd.concat([taxaSep.iloc[:, :columnTracker], taxName], axis=1)
-        else:
-            taxaUpdate = pd.concat([taxaSep.iloc[:, :columnTracker], taxName, taxaSep.iloc[:, columnTracker+1:]], axis=1)
-        taxaUpdate = taxaUpdate.apply(lambda x: taxaSplit.join(x.astype(str)), axis=1)
+            # Extract taxa names from the taxLevel column
+            taxName = taxaSep[columnTracker].astype(str)
+            
+            # Filter taxName with occourence of clade extensions to output in logger
+            clade_pattern = r'(?i)\s+(clade\s+)?[A-Z]$|(?i)\s+(clade\s+)?[A-Z]\s'        
+            taxNames_wClades = taxName.str.match(clade_pattern)
+            matched_taxNames = taxName.loc[taxNames_wClades].tolist()        
+            if matched_taxNames:
+                logger_output = ', '.join(matched_taxNames)
+                logger.info(f"List of {taxLevel} taxa for which clade extension was found & removed: {logger_output}.")
+            else:
+                logger.info(f"For {taxLevel} taxa no clade extension was found & removed.")
     
-        # Replace original taxa with updated taxa names & update the merged_df
-        taxa[taxa.str.contains(taxLevel)] = taxaUpdate.values
+            # Clean taxa names using regex
+            taxName = taxName.str.replace(r'(?i)\s+(clade\s+)?[A-Z]$', '', regex=True)
+            taxName = taxName.str.replace(r'(?i)\s+(clade\s+)?[A-Z]\s', '', regex=True)
+                    
+            # Update full taxa name (inlcuding all taxLevels) with cleaned taxa
+            if taxLevel == 's__':
+                taxaUpdate = pd.concat([taxaSep.iloc[:, :columnTracker], taxName], axis=1)
+            else:
+                taxaUpdate = pd.concat([taxaSep.iloc[:, :columnTracker], taxName, taxaSep.iloc[:, columnTracker+1:]], axis=1)
+            taxaUpdate = taxaUpdate.apply(lambda x: taxaSplit.join(x.astype(str)), axis=1)
+        
+            # Replace original taxa with updated taxa names & update the merged_df
+            taxa[taxa.str.contains(taxLevel)] = taxaUpdate.values
 
         # Increase column to match corresponding taxonomic level for next for-loop iteration
         columnTracker += 1
@@ -100,106 +101,48 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
     return grouped_df
 
 
-def split_taxonomic_groups(merged_df, flagLoneSpecies=False, taxaSplit='; '):
+def filter_samples_low_read_counts(merged_dataframe, sample_read_counts_cutoff=1):
     """
-    Split the taxonomic groups in the index of the input DataFrame and create separate DataFrames for each taxonomic level.
-
-    Args:
-        merged_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index, without clade seperation anymore.
-
-    Returns:
-        dict: A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
-    """
-    logger.info("Split taxonomic levels in seperate dataframes, each per level.")
-
-    levels = ['Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species']
-
-    # Replace all level indicators in the 'Taxon' column
-    merged_df = merged_df.reset_index(drop=True)
-    
-    merged_df['Taxon'] = merged_df['Taxon'].replace(".__", "", regex=True)
-
-    # Reset the index and split the index column into separate columns for each taxonomic level
-    taxonomic_levels_df = merged_df 
-    taxonomic_split_df = taxonomic_levels_df['Taxon'].str.split(taxaSplit, expand=True)
-    taxonomic_split_df = taxonomic_split_df.fillna('') # deals with cases of empty string instead of np.nan
-    taxonomic_split_df.columns = levels
-
-    # Concatenate genus and species names if both are present, otherwise leave species column unchanged
-    if flagLoneSpecies:
-        taxonomic_split_df['Species'] = taxonomic_split_df.apply(
-            lambda row: row['Genus'] + ' ' + row['Species'] if row['Species'] != '' else row['Species'],
-            axis=1
-    )
-
-    # Concatenate the taxonomic_split_df and the abundance data from taxonomic_levels_df
-    taxonomic_levels_df = pd.concat([taxonomic_split_df, taxonomic_levels_df.iloc[:, 1:]], axis=1)
-
-    # Initialize a dictionary to store DataFrames for each taxonomic level
-    taxonomic_dfs = {}
-
-    # Iterate through the taxonomic levels and create a DataFrame for each level
-    for level in levels:
-        level_df = taxonomic_levels_df[[level] + list(taxonomic_levels_df.columns[len(levels):])]
-        level_df = level_df.rename(columns={level: 'Taxon'})
-
-        # Set the 'Taxon' column as the index and remove rows with an empty string in the 'Taxon' column
-        level_df = level_df.set_index('Taxon')
-        level_df = level_df.loc[level_df.index != '']
-
-        # Add the DataFrame to the dictionary
-        taxonomic_dfs[level] = level_df
-
-    return taxonomic_dfs
-
-
-def filter_samples_low_read_counts(taxonomic_dataframes, sample_read_counts_cutoff=1):
-    """
-    Filter all taxonomic abundance dataframes (containing absolute read counts) 
+    Filter the merged_dataframe (containing absolute read counts) 
     for samples which contain less total read counts than a specified cutoff & exclude them
     from the output dataframes. This ensures there are no samples with read counts = 0, which
     could lead to downstream errors in the pipeline, as well as that the sequencing depth
     is high enough in each sample that saturation for OTU detection is reached.
 
     Args:
-        taxonomic_dataframes (dict):        A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
+        merged_dataframe (pandas dataframe):The input DataFrame with taxonomic groups in the index.
         sample_read_counts_cutoff (int):    A cutoff for minimal read counts in a sample to be included in downstream analysis.
                                             Defaults to 1, and is min = 1.
 
     Returns:
-        filtered_taxonomic_dataframes (dict): A dictionary with keys as taxonomic levels and values as the corresponding DataFrames,
-                                            only with samples containing more reads than the cutoff.
+        filtered_merged_dataframe (pandas dataframe): The input DataFrame with taxonomic groups in the index,
+                                            without samples whose total read count is below the threshold.
     """
-    logger.info('Filtering taxonomic dataframes for samples with read counts below/equal to cutoff (currently 1 read).')
+    logger.info('Filtering the merged dataframe for samples with read counts below the cutoff.')
     
     # If sample_read_counts_cutoff is lower than 1, set it to 1 to ensure that there are no samples
     # with 0 read counts, which would cause MgPipe to crash
     if sample_read_counts_cutoff < 1:
         sample_read_counts_cutoff = 1
+    
+    read_counts = merged_dataframe.sum()
+    
+    # Subset the dataframe only including those samples with read count higher than cutoff
+    samples_equal_or_higher_than_cutoff = [i for i, v in enumerate(read_counts) if v >= sample_read_counts_cutoff]
+    if samples_equal_or_higher_than_cutoff:
+        filtered_merged_dataframe = merged_dataframe.iloc[:, samples_equal_or_higher_than_cutoff]
 
-    filtered_taxonomic_dataframes = {}
-
-    for level, df in taxonomic_dataframes.items():
-        read_counts = df.sum()
-        
-        # Subset the level dataframe only including those samples with read count higher than cutoff
-        samples_equal_or_higher_than_cutoff = [i for i, v in enumerate(read_counts) if v >= sample_read_counts_cutoff]
-        if samples_equal_or_higher_than_cutoff:
-            level_filtered_taxonomic_dataframe = df.iloc[:, samples_equal_or_higher_than_cutoff]
-
-            # Identify which samples are below the threshold, therefore excluded & log them
-            samples_lower_than_cutoff = [i for i, v in enumerate(read_counts) if v < sample_read_counts_cutoff]
-            if samples_lower_than_cutoff:
-                logger_output = ', '.join(samples_lower_than_cutoff)
-                logger.info(f"Following {level} samples had a total read count below the cutoff & were removed: {logger_output}.")
-            else:
-                logger.info(f"No samples were below the read counts cutoff & removed.")
+        # Identify which samples are below the threshold, therefore excluded & log them
+        samples_lower_than_cutoff = [i for i, v in enumerate(read_counts) if v < sample_read_counts_cutoff]
+        if samples_lower_than_cutoff:
+            logger_output = ', '.join(samples_lower_than_cutoff)
+            logger.info(f"Following {level} samples had a total read count below the cutoff & were removed: {logger_output}.")
         else:
-            raise too_low_read_counts_error()
-        
-        filtered_taxonomic_dataframes[level] = level_filtered_taxonomic_dataframe
-
-    return filtered_taxonomic_dataframes
+            logger.info(f"No samples were below the read counts cutoff & removed.")
+    else:
+        raise too_low_read_counts_error()
+    
+    return filtered_merged_dataframe
 
 
 class too_low_read_counts_error(Exception):
@@ -212,15 +155,16 @@ class too_low_read_counts_error(Exception):
         super().__init__(self.message)
 
 
-def rename_taxa(taxonomic_dfs):
+def rename_taxa(merged_dataframe):
     """
-    Rename taxa in the taxonomic DataFrames by applying alterations, specific alterations, and homosynonyms.
+    Rename taxa in the merged dataframe by applying alterations, specific alterations, and homosynonyms.
 
     Args:
-        taxonomic_dfs (dict): A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
+        merged_dataframe (pandas dataframe):The input DataFrame with taxonomic groups in the index.
 
     Returns:
-        dict: A dictionary with keys as taxonomic levels and values as the renamed DataFrames.
+        renamed_dataframe: The input DataFrame with taxonomic groups in the index, which in case they had initially
+                            a different naming convention than AGORA2/APOLLO, are renamed.
     """
     logger.info("Renaming taxa for database compatibility.")
 
@@ -234,69 +178,66 @@ def rename_taxa(taxonomic_dfs):
     # Access the dictionaries
     alterations, specific_alterations, homosynonyms = loaded_dicts
 
-    renamed_dfs = {}
+    renamed_df = merged_dataframe.copy()
 
-    for level, df in taxonomic_dfs.items():
-        renamed_df = df.copy()
+    # Apply alterations
+    for pattern in alterations:
+        renamed_df.index = renamed_df.index.str.replace(pattern, '', regex=True)
 
-        # Apply alterations
-        for pattern in alterations:
-            renamed_df.index = renamed_df.index.str.replace(pattern, '', regex=True)
+    # Apply specific alterations
+    for pattern, replacement in specific_alterations.items():
+        renamed_df.index = renamed_df.index.str.replace(pattern, replacement, regex=True)
 
-        # Apply specific alterations
-        for pattern, replacement in specific_alterations.items():
-            renamed_df.index = renamed_df.index.str.replace(pattern, replacement, regex=True)
+    # Apply homosynonyms
+    for pattern, replacement in homosynonyms.items():
+        renamed_df.index = renamed_df.index.str.replace(pattern, replacement, regex=True)
+    
+    # Identify & log replaced entries
+    replaced_entries = merged_dataframe.index[merged_dataframe.index != renamed_df.index]
+    replacement_pairs = []
+    for original_taxa_name, replacement in zip(replaced_entries, renamed_df.index[merged_dataframe.index != renamed_df.index]):
+        replacement_pairs.append(f"Original taxa name:{original_taxa_name} - Replacement: {replacement}")
+    
+    if replacement_pairs:
+        logger_output = ', '.join(replacement_pairs)
+        logger.info(f"Original taxa name(s) with their replacement(s): {logger_output}.")
+    else:
+        logger.info(f"No taxa namings were replaced.")
+    
+    # Group by index and sum the rows with the same name (as some taxa might be non-unique after renaming)
+    renamed_df = renamed_df.groupby(renamed_df.index.name).sum()
 
-        # Apply homosynonyms
-        for pattern, replacement in homosynonyms.items():
-            renamed_df.index = renamed_df.index.str.replace(pattern, replacement, regex=True)
-
-        # Add the renamed DataFrame to the dictionary
-        renamed_dfs[level] = renamed_df
-        
-        # Identify & log replaced entries
-        replaced_entries = df.index[df.index != renamed_df.index]
-        replacement_pairs = []
-        for original_taxa_name, replacement in zip(replaced_entries, renamed_df.index[df.index != renamed_df.index]):
-            replacement_pairs.append(f"Original taxa name:{original_taxa_name} - Replacement: {replacement}")
-        
-        if replacement_pairs:
-            logger_output = ', '.join(replacement_pairs)
-            logger.info(f"Original {level} taxa name(s) with their replacement(s): {logger_output}.")
-        else:
-            logger.info(f"No taxa namings were replaced.")
-
-    return renamed_dfs
+    return renamed_df
 
 
-def check_presence_in_modelDatabase(dataframes, whichModelDatabase="full_db", userDatabase_path=""):
+def check_presence_in_modelDatabase(renamed_dataframe, whichModelDatabase="full_db", userDatabase_path="", taxaSplit='; '):
     """
-    Check if entries from the input DataFrames are in the model-database DataFrame under the same level column.
-    Split the input DataFrames into two DataFrames: present and absent. 
-    Add "pan" prefix to the index of the present DataFrame if the level is "Species".
+    Check if entries from the input DataFrame are in the model-database DataFrame under the same taxonomic level column.
+    Split the input DataFrame into two DataFrames: present and absent. 
+    Add "pan" prefix to the index of the present DataFrame if the taxonomic level is "Species".
 
     Args:
-        dataframes (dict):           A dictionary containing the input DataFrames to be 
-                                     checked against the model-database (currently 
-                                     AGORA2 or APOLLO, or combination of both).
-        whichModelDatabase (string): A string defining if AGORA2, APOLLO, a 
-                                     combination of both or a user-defined database should be used as model
-                                     database to check presence in. 
-                                     Allowed Input (case-insensitive): "AGORA2", "APOLLO", "full_db", "user_db".
-                                     Default: "full_db".
-        userDatabase_path (string):  A string containing the full path to the user-defined database,
-                                     which should be in .csv, .txt, .parquet or .xlsx format and
-                                     have column names = taxonomic levels.
+        renamed_dataframe (pandas dataframe):   The input DataFrame to be 
+                                                checked against the model-database (which is
+                                                AGORA2 or APOLLO, combination of both or a user-defined one).
+        whichModelDatabase (string):            A string defining if AGORA2, APOLLO, a 
+                                                combination of both or a user-defined database should be used as model
+                                                database to check presence in. 
+                                                Allowed Input (case-insensitive): "AGORA2", "APOLLO", "full_db", "user_db".
+                                                Default: "full_db".
+        userDatabase_path (string):             A string containing the full path to the user-defined database,
+                                                which should be in .csv, .txt, .parquet or .xlsx format and
+                                                have column names = taxonomic levels.
 
     Returns:
-        dict: A dictionary containing the present and absent DataFrames for each taxonomic level.
+        pandas dataframes: Two dataframes containing present and absent taxa.
     """
     logger.info('Checking presence of taxa in model database.')
 
     resources_dir = os.path.join(os.path.dirname(__file__), 'resources')
 
-    # Check, if user wants to use the AGORA2 or APOLLO database, or combination of both &
-    # create subset accordingly
+    # Check, if user wants to use the AGORA2 or APOLLO database, the combination of both or
+    # a user-defined database & load the according one
     if whichModelDatabase.lower() == "agora2":
         # Read in model-database as dataframe
         modelDatabase_path = os.path.join(resources_dir, 'AGORA2_APOLLO_28112024.parquet')
@@ -319,24 +260,81 @@ def check_presence_in_modelDatabase(dataframes, whichModelDatabase="full_db", us
 
         updatedModelDatabase_df = modelDatabase_df.drop('Resource', axis=1)
 
-    present_dataframes, absent_dataframes = {}, {}
-    for level, input_df in dataframes.items():
-        # Find entries present in AGORA2/APOLLO
-        present_mask = input_df.index.isin(updatedModelDatabase_df[level])
-        present_df = input_df.loc[present_mask]
+    # Subset taxa for only those which contain species
+#     dfSubset_wSpecies = renamed_dataframe[renamed_dataframe.index.str.contains("s__")]
 
-        # Add "pan" prefix to the index of the present DataFrame if the level is "Species"
-        if level == 'Species':
-            present_df.index = 'pan' + present_df.index
+    # Split the indeces (taxa namings) by the taxaSplit, grab the species names & remove "s__" for model database comparison
+    species = renamed_dataframe.index.str.split(taxaSplit).str[6].str.replace("s__", "", regex=False)
 
-        # Find entries absent in AGORA2/APOLLO
-        absent_mask = ~present_mask
-        absent_df = input_df.loc[absent_mask]
+    # Find entries present in the model database
+    present_mask = species.isin(updatedModelDatabase_df['Species'])
+    present_df = renamed_dataframe.loc[present_mask]
 
-        present_dataframes[level] = present_df
-        absent_dataframes[level] = absent_df
+    # Add "pan" prefix to the index of the present DataFrame
+#     present_df.index = 'pan' + present_df.index
 
-    return present_dataframes, absent_dataframes
+    # Find entries absent in the model database
+    absent_mask = ~present_mask
+    absent_df = renamed_dataframe.loc[absent_mask]
+
+    return present_df, absent_df
+
+
+def split_taxonomic_groups(merged_df, flagLoneSpecies=False, taxaSplit='; '):
+    """
+    Split the taxonomic groups in the index of the input DataFrame and create separate DataFrames for each taxonomic level.
+
+    Args:
+        merged_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index, after model database mapping.
+
+    Returns:
+        dict: A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
+    """
+    logger.info("Split taxonomic levels in seperate dataframes, per level.")
+
+    # Reset the index & replace all level indicators in the 'Taxon' column
+    merged_df.index = merged_df.index.str.replace(".__", "", regex=True)
+
+    # Split the index column into separate columns for each taxonomic level, stored in a seperate DataFrame
+    taxonomic_levels_df = merged_df 
+    taxonomic_split_df = taxonomic_levels_df.index.str.split(taxaSplit, expand=True).to_frame().reset_index(drop=True)
+
+    # Replace NaN by empty strings
+    taxonomic_split_df = taxonomic_split_df.fillna('')
+
+    # Add taxonomic levels as column names
+    levels = ['Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species']
+    taxonomic_split_df.columns = levels
+
+#     # Concatenate genus and species names if both are present, otherwise leave species column unchanged
+#     if flagLoneSpecies:
+#         taxonomic_split_df['Species'] = taxonomic_split_df.apply(
+#             lambda row: row['Genus'] + ' ' + row['Species'] if row['Species'] != '' else row['Species'],
+#             axis=1
+#     )
+
+    # Concatenate the taxonomic_split_df and the abundance data from taxonomic_levels_df
+    taxonomic_levels_df = pd.concat([taxonomic_split_df, taxonomic_levels_df.reset_index(drop=True)], axis=1)
+
+    # Initialize a dictionary to store DataFrames for each taxonomic level
+    taxonomic_dfs = {}
+
+    # Iterate through the taxonomic levels and create a DataFrame for each level
+    for level in levels:
+        level_df = taxonomic_levels_df[[level] + list(taxonomic_levels_df.columns[len(levels):])]
+        level_df = level_df.rename(columns={level: 'Taxon'})
+
+        # Set the 'Taxon' column as the index and remove rows with an empty string in the 'Taxon' column
+        level_df = level_df.set_index('Taxon')
+        level_df = level_df.loc[level_df.index != '']
+
+        # Group by index and sum the rows with the same name (as especially taxa from higher taxonomic level might occour in multiple rows after seperation)
+        level_df = level_df.groupby(level_df.index.name).sum()
+
+        # Add the DataFrame to the dictionary
+        taxonomic_dfs[level] = level_df
+
+    return taxonomic_dfs
 
 
 def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False, cutoff=None, pre_mapping_read_counts=None):
