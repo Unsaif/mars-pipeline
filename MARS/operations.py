@@ -280,23 +280,23 @@ def check_presence_in_modelDatabase(renamed_dataframe, whichModelDatabase="full_
     return present_df, absent_df
 
 
-def split_taxonomic_groups(merged_df, flagLoneSpecies=False, taxaSplit='; '):
+def split_taxonomic_groups(df, flagLoneSpecies=False, taxaSplit='; '):
     """
     Split the taxonomic groups in the index of the input DataFrame and create separate DataFrames for each taxonomic level.
 
     Args:
-        merged_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index, after model database mapping.
+        merged_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index, after model database mapping & normalization.
 
     Returns:
         dict: A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
     """
     logger.info("Split taxonomic levels in seperate dataframes, per level.")
 
-    # Reset the index & replace all level indicators in the 'Taxon' column
-    merged_df.index = merged_df.index.str.replace(".__", "", regex=True)
+    # Replace all level indicators in the taxa names in the df index
+    df.index = df.index.str.replace(".__", "", regex=True)
 
     # Split the index column into separate columns for each taxonomic level, stored in a seperate DataFrame
-    taxonomic_levels_df = merged_df 
+    taxonomic_levels_df = df 
     taxonomic_split_df = taxonomic_levels_df.index.str.split(taxaSplit, expand=True).to_frame().reset_index(drop=True)
 
     # Replace NaN by empty strings
@@ -337,7 +337,7 @@ def split_taxonomic_groups(merged_df, flagLoneSpecies=False, taxaSplit='; '):
     return taxonomic_dfs
 
 
-def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False, cutoff=None, pre_mapping_read_counts=None):
+def calculate_metrics(dataframes_normalized, dataframes, group=None):
     """
     Calculate & then summarize alpha & beta diversity metrics, read counts & Firmicutes to Bacteroidetes ratio (for pyhlum)
     to compare pre-mapping & post-mapping status & evaluate the mapping coverage.
@@ -345,10 +345,6 @@ def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False,
     Args:
         dataframes (dict): A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
         group (dict):      Stratified dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
-        cutoff (float, optional): A cut-off value for filtering out low abundance taxa. Defaults to None.
-        pre_mapping_read_counts (int64 list, optional): A list containing per-sample total read counts pre-mapping,
-                                allowing for taxa abundance normalization against pre-mapped total read counts.
-                                Defaults to None.
 
     Returns:
         dicts: Dictionaries with keys as taxonomic levels and values as the calculated metrics (metrics, abundance metrics, coverage summary statistics).
@@ -359,57 +355,37 @@ def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False,
     abundance_metrics = {}
     summ_stats = {}
 
-    for level, df in dataframes.items():
+    for level in dataframes_normalized.keys():
+        df = dataframes[level]
+        df_normalized = dataframes_normalized[level]
         if group is not None:
-            df = df[group]
-        
-        # Group by index and sum the rows with the same name
-        grouped_df = df.groupby(df.index.name).sum()
+            df_complete = dataframes[level]
+            df_complete_normalized = dataframes_normalized[level]
+            df = df_complete[group]
+            df_normalized = df_complete_normalized[group]
 
-        # Calculate read counts for dataframe subset & if provided, grab total read counts pre-mapping
-        if pre_mapping_read_counts is not None:
-            read_counts = pre_mapping_read_counts[level].sum()
-
-            read_counts_df = grouped_df.sum()
-            mean_read_counts_df = np.mean(read_counts_df)
-            std_read_counts_df = np.std(read_counts_df)
-        else:
-            read_counts = grouped_df.sum()
-            
-            read_counts_df = grouped_df.sum()
-            mean_read_counts_df = np.mean(read_counts)
-            std_read_counts_df = np.std(read_counts)
-        
-        if dfvalues_are_rel_abundances == False:
-            # Normalize read counts to relative abundances per taxa
-            rel_abundances = grouped_df.div(read_counts)
-        else:
-            rel_abundances = grouped_df
-
-        # Optionally apply cut-off for low abundant taxa
-        if cutoff is not None:
-            rel_abundances[rel_abundances <= cutoff] = 0
-        
-        # Remove taxa which are non-abundant in any sample after cutoff has been applied
-        rel_abundances = rel_abundances[(rel_abundances != 0).any(axis=1)]
+        # Calculate read counts for dataframe
+        read_counts_df = df.sum()
+        mean_read_counts_df = np.mean(read_counts_df)
+        std_read_counts_df = np.std(read_counts_df)
         
         # Get total number of taxa
-        num_taxa = rel_abundances.shape[0]
+        num_taxa = df_normalized.shape[0]
 
         # Estimate total number of named taxa, by checking for presence of "-"
         # or multiple uppercase letters in a row in taxa name
-        taxa_name_contains_dash = rel_abundances.index.str.contains('-')
-        taxa_name_contains_uppercase = rel_abundances.index.str.contains(r'[A-Z]{2,}')
-        est_taxa_wo_standard_name = rel_abundances[taxa_name_contains_dash | taxa_name_contains_uppercase]
-        est_num_taxa_w_standard_name = len(rel_abundances.index) - len(est_taxa_wo_standard_name)
+        taxa_name_contains_dash = df_normalized.index.str.contains('-')
+        taxa_name_contains_uppercase = df_normalized.index.str.contains(r'[A-Z]{2,}')
+        est_taxa_wo_standard_name = df_normalized[taxa_name_contains_dash | taxa_name_contains_uppercase]
+        est_num_taxa_w_standard_name = len(df_normalized.index) - len(est_taxa_wo_standard_name)
 
         # Calculate non-zero entries per column to get species richness per sample
-        species_richness = (rel_abundances != 0).sum()
+        species_richness = (df_normalized != 0).sum()
         mean_species_richness = np.mean(species_richness)
         std_species_richness = np.std(species_richness)
 
         # Calculate alpha diversity using the pielou's evenness
-        shannon_index = -1 * (rel_abundances * rel_abundances.apply(np.log)).sum()
+        shannon_index = -1 * (df_normalized * df_normalized.apply(np.log)).sum()
         pielous_evenness = shannon_index / species_richness.apply(np.log)
         mean_pielous_evenness = np.mean(pielous_evenness)
         std_pielous_evenness = np.std(pielous_evenness)
@@ -420,24 +396,24 @@ def calculate_metrics(dataframes, group=None, dfvalues_are_rel_abundances=False,
         }
 
         # Calculate beta diversity using bray-curtis dissimilarity
-        beta_diversity_metrics[level] = calc_bray_curtis_matrix(rel_abundances)
+        beta_diversity_metrics[level] = calc_bray_curtis_matrix(df_normalized)
         
         # Calculate mean + SD, min & max relative abundance of all taxa & in 
         # how many samples a taxa is present
         level_abundance_metrics = pd.DataFrame({
-            'mean': rel_abundances.mean(axis=1),
-            'SD': rel_abundances.std(axis=1),
-            'minimum': rel_abundances.min(axis=1),
-            'maximum': rel_abundances.max(axis=1),
-            'non_zero_count': (rel_abundances != 0).sum(axis=1)
+            'mean': df_normalized.mean(axis=1),
+            'SD': df_normalized.std(axis=1),
+            'minimum': df_normalized.min(axis=1),
+            'maximum': df_normalized.max(axis=1),
+            'non_zero_count': (df_normalized != 0).sum(axis=1)
         })
         
         abundance_metrics[level] = level_abundance_metrics
 
         if level == 'Phylum':
             # Calculate Firmicutes to Bacteroidetes ratio
-            firmicutes = rel_abundances.loc['Firmicutes'] if 'Firmicutes' in rel_abundances.index else 0
-            bacteroidetes = rel_abundances.loc['Bacteroidetes'] if 'Bacteroidetes' in rel_abundances.index else 0
+            firmicutes = df_normalized.loc['Firmicutes'] if 'Firmicutes' in df_normalized.index else 0
+            bacteroidetes = df_normalized.loc['Bacteroidetes'] if 'Bacteroidetes' in df_normalized.index else 0
 
             try:
                 fb_ratio = firmicutes / bacteroidetes
