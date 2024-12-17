@@ -1,4 +1,4 @@
-from MARS.utils import read_file_as_dataframe
+from MARS.utils import read_file_as_dataframe, merge_files
 import pandas as pd
 import json
 import os
@@ -7,6 +7,53 @@ import re
 import logging
 
 logger = logging.getLogger('main.operations')
+
+def load_input_and_preprocess(input_file1, input_file2=None):
+    """
+    Loads in input data, and preprocesses it (merging dataframes, handling NaN,
+    targeting duplicate entries, subsetting for taxa with species information &
+    checking whether input is in absolute read counts or already normalized to relative abundances).
+    ToDo: Include sanity checks on input data, if it is in correct table layout - has required information.
+
+    Args:
+        input_file1 (chars/string):     Path to input data (can be tab seperated, comma seperated, etc.),
+                                        containing either only read counts or additionally already a index column
+                                        with taxa names.
+        input_file1 (chars/string):     Path to additional input data (can be tab seperated, comma seperated, etc.),
+                                        containing taxa names associated with input_file1.
+                                        Defaults to None, only required if input_file1 does not contain taxa names.
+
+    Returns:
+        uniqueSpecies_dataframe (pd.dataframe):     A dataframe containing the preprocessed data from input_file1
+                                                    (and potentially input_file2).
+        dfvalues_are_rel_abundances (boolean):      A boolean indicating whether the input data is already normalized
+                                                    to relative abundances or not. Relevant for MARS subsequent steps.
+    """
+    logger.info("Loading input data & preprocessing it.")
+
+    # ToDo: Check whether input files are in correct format
+
+    # Read in input file(s) & merge dataframes in case abundances plus taxa names are stored seperately
+    merged_dataframe = merge_files(input_file1, input_file2)
+
+    # Replace NaN by 0
+    merged_dataframe_woNaN = merged_dataframe.fillna(0)
+
+    # Sum read counts (or relative abundances) for same taxa in case there are duplicate entries
+    uniqueTaxa_dataframe = merged_dataframe_woNaN.groupby(merged_dataframe_woNaN.index.name).sum()
+
+    # Get subset of dataframe which contains species
+    uniqueSpecies_dataframe = uniqueTaxa_dataframe[uniqueTaxa_dataframe.index.str.contains("s__")]
+
+    # Replace potential "_" between Genus & epithet in species name by " "
+    uniqueSpecies_dataframe.index = uniqueSpecies_dataframe.index.str.replace(r'(?<!_)_(?!_)', ' ', regex=True)
+
+    # Check whether the dataframe contains absolute read counts or relative abundances and 
+    # set boolean accordingly for subsequent steps
+    dfvalues_are_rel_abundances = check_df_absolute_or_relative_counts(uniqueSpecies_dataframe)
+
+    return uniqueSpecies_dataframe, dfvalues_are_rel_abundances
+
 
 def check_df_absolute_or_relative_counts(df):
     """
@@ -24,11 +71,13 @@ def check_df_absolute_or_relative_counts(df):
     dfvalues_are_rel_abundances = True
     if (read_counts > 1).any():
         dfvalues_are_rel_abundances = False
+    
+    logger.info(f"Evaluating whether input data was already normalized to relative abundances. Already normalized: {dfvalues_are_rel_abundances}.")
 
     return dfvalues_are_rel_abundances
 
 
-def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
+def remove_clades_from_taxaNames(preprocessed_dataframe, taxaSplit='; '):
     """ 
     Removes clade extensions from taxonomic names at any taxonomic level (if present)
     and sums counts of all clades of each taxa together, because most taxa with clade extensions
@@ -36,16 +85,16 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
     according taxa without the clade extension could be present.
 
     Args:
-        merged_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index.
-        taxaSplit (string):       Seperator by which input taxonomic levels are seperated.
+        preprocessed_dataframe (pd.DataFrame):  The input DataFrame with taxonomic groups in the index.
+        taxaSplit (string):                     Seperator by which input taxonomic levels are seperated.
     
     Returns:
         grouped_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index, without clade seperation anymore.
     """
     logger.info("Removing clade extensions from taxa names.")
     
-    merged_df = merged_df.reset_index()
-    taxa = merged_df['Taxon']
+    preprocessed_dataframe = preprocessed_dataframe.reset_index()
+    taxa = preprocessed_dataframe['Taxon']
     
     # Abbreviations for all taxonomic levels
     taxUnitAbbreviations = ['p__', 'c__', 'o__', 'f__', 'g__', 's__']
@@ -89,78 +138,81 @@ def remove_clades_from_taxaNames(merged_df, taxaSplit='; '):
         columnTracker += 1
     
     # Replace the clade-containing taxa names by the updated taxa names without clades
-    merged_df['Taxon'] = taxa
+    preprocessed_dataframe['Taxon'] = taxa
 
     # Group by 'Taxon' and sum, remove 'GroupCount' column if it exists &
     # rename columns to remove 'sum_' prefix
-    grouped_df = merged_df.groupby('Taxon').sum().reset_index()
+    grouped_df = preprocessed_dataframe.groupby('Taxon').sum().reset_index()
     if 'GroupCount' in grouped_df.columns:
         grouped_df.drop(columns='GroupCount', inplace=True)
     grouped_df.columns = [col.replace('sum_', '') for col in grouped_df.columns]
 
+    grouped_df = grouped_df.set_index('Taxon')
+
     return grouped_df
 
 
-def filter_samples_low_read_counts(merged_dataframe, sample_read_counts_cutoff=1):
-    """
-    Filter the merged_dataframe (containing absolute read counts) 
-    for samples which contain less total read counts than a specified cutoff & exclude them
-    from the output dataframes. This ensures there are no samples with read counts = 0, which
-    could lead to downstream errors in the pipeline, as well as that the sequencing depth
-    is high enough in each sample that saturation for OTU detection is reached.
+def concatenate_genus_and_species_names(preprocessed_dataframe, taxaSplit='; '):
+    """ 
+    Concatenates genus name with species epithet to form full species names
+    and replaces the species epithet in the dataframe index with the full name
+    for subsequent steps.
 
     Args:
-        merged_dataframe (pandas dataframe):The input DataFrame with taxonomic groups in the index.
-        sample_read_counts_cutoff (int):    A cutoff for minimal read counts in a sample to be included in downstream analysis.
-                                            Defaults to 1, and is min = 1.
-
+        preprocessed_dataframe (pd.DataFrame):  The input DataFrame with taxonomic groups in the index.
+        taxaSplit (string):                     Seperator by which input taxonomic levels are seperated.
+    
     Returns:
-        filtered_merged_dataframe (pandas dataframe): The input DataFrame with taxonomic groups in the index,
-                                            without samples whose total read count is below the threshold.
+        grouped_df (pd.DataFrame): The input DataFrame with taxonomic groups in the index, with complete species names.
     """
-    logger.info('Filtering the merged dataframe for samples with read counts below the cutoff.')
+    logger.info("Concatenating genus name with species epithet.")
     
-    # If sample_read_counts_cutoff is lower than 1, set it to 1 to ensure that there are no samples
-    # with 0 read counts, which would cause MgPipe to crash
-    if sample_read_counts_cutoff < 1:
-        sample_read_counts_cutoff = 1
+    preprocessed_dataframe = preprocessed_dataframe.reset_index()
+    taxa = preprocessed_dataframe['Taxon']
+
+    # Filter taxa that contain species names & split the strings by the specified taxaSplit
+    taxa_wSpecies = taxa[taxa.str.contains('s__')]
+    if len(taxa_wSpecies) > 0:
+        taxaSep = taxa_wSpecies.str.split(taxaSplit, expand=True)
     
-    read_counts = merged_dataframe.sum()
+        # Extract genus name & species epithet
+        genusName = taxaSep[5].astype(str)
+        speciesName = taxaSep[6].astype(str)
+
+        genusName = genusName.str.replace('g__', '')
+        speciesName = speciesName.str.replace('s__', '')
+
+        # Merge genus name & species epithet to form updated species name
+        new_speciesName = 's__' + genusName + ' ' + speciesName
+
+        # Update full taxa name (inlcuding all taxLevels) with cleaned taxa
+        taxaUpdate = pd.concat([taxaSep.iloc[:, :6], new_speciesName], axis=1)
+        taxaUpdate = taxaUpdate.apply(lambda x: taxaSplit.join(x.astype(str)), axis=1)
     
-    # Subset the dataframe only including those samples with read count higher than cutoff
-    samples_equal_or_higher_than_cutoff = [i for i, v in enumerate(read_counts) if v >= sample_read_counts_cutoff]
-    if samples_equal_or_higher_than_cutoff:
-        filtered_merged_dataframe = merged_dataframe.iloc[:, samples_equal_or_higher_than_cutoff]
-
-        # Identify which samples are below the threshold, therefore excluded & log them
-        samples_lower_than_cutoff = [i for i, v in enumerate(read_counts) if v < sample_read_counts_cutoff]
-        if samples_lower_than_cutoff:
-            logger_output = ', '.join(samples_lower_than_cutoff)
-            logger.info(f"Following {level} samples had a total read count below the cutoff & were removed: {logger_output}.")
-        else:
-            logger.info(f"No samples were below the read counts cutoff & removed.")
-    else:
-        raise too_low_read_counts_error()
+        # Replace original taxa with updated taxa names & update the merged_df
+        taxa[taxa.str.contains('s__')] = taxaUpdate.values
     
-    return filtered_merged_dataframe
+    # Replace the clade-containing taxa names by the updated taxa names without clades
+    preprocessed_dataframe['Taxon'] = taxa
+
+    # Group by 'Taxon' and sum, remove 'GroupCount' column if it exists &
+    # rename columns to remove 'sum_' prefix
+    grouped_df = preprocessed_dataframe.groupby('Taxon').sum().reset_index()
+    if 'GroupCount' in grouped_df.columns:
+        grouped_df.drop(columns='GroupCount', inplace=True)
+    grouped_df.columns = [col.replace('sum_', '') for col in grouped_df.columns]
+
+    grouped_df = grouped_df.set_index('Taxon')
+
+    return grouped_df
 
 
-class too_low_read_counts_error(Exception):
-    """
-    Exception raised in function 'filter_samples_low_read_counts' when all 
-    samples have read counts below the threshold and subsequent analysis can not be run.
-    """
-    def __init__(self, message="All samples have read counts below the sample_read_counts_cutoff (which defaults to 1, with min=1). Therefore, no subsequent analysis can be run."):
-        self.message = message
-        super().__init__(self.message)
-
-
-def rename_taxa(merged_dataframe):
+def rename_taxa(preprocessed_dataframe):
     """
     Rename taxa in the merged dataframe by applying alterations, specific alterations, and homosynonyms.
 
     Args:
-        merged_dataframe (pandas dataframe):The input DataFrame with taxonomic groups in the index.
+        preprocessed_dataframe (pandas dataframe):The preprocessed input DataFrame with taxonomic groups in the index.
 
     Returns:
         renamed_dataframe: The input DataFrame with taxonomic groups in the index, which in case they had initially
@@ -178,7 +230,7 @@ def rename_taxa(merged_dataframe):
     # Access the dictionaries
     alterations, specific_alterations, homosynonyms = loaded_dicts
 
-    renamed_df = merged_dataframe.copy()
+    renamed_df = preprocessed_dataframe.copy()
 
     # Apply alterations
     for pattern in alterations:
@@ -193,9 +245,9 @@ def rename_taxa(merged_dataframe):
         renamed_df.index = renamed_df.index.str.replace(pattern, replacement, regex=True)
     
     # Identify & log replaced entries
-    replaced_entries = merged_dataframe.index[merged_dataframe.index != renamed_df.index]
+    replaced_entries = preprocessed_dataframe.index[preprocessed_dataframe.index != renamed_df.index]
     replacement_pairs = []
-    for original_taxa_name, replacement in zip(replaced_entries, renamed_df.index[merged_dataframe.index != renamed_df.index]):
+    for original_taxa_name, replacement in zip(replaced_entries, renamed_df.index[preprocessed_dataframe.index != renamed_df.index]):
         replacement_pairs.append(f"Original taxa name:{original_taxa_name} - Replacement: {replacement}")
     
     if replacement_pairs:
@@ -208,6 +260,60 @@ def rename_taxa(merged_dataframe):
     renamed_df = renamed_df.groupby(renamed_df.index.name).sum()
 
     return renamed_df
+
+
+def filter_samples_low_read_counts(dataframe, sample_read_counts_cutoff=1):
+    """
+    Filter the merged_dataframe (containing absolute read counts) 
+    for samples which contain less total read counts than a specified cutoff & exclude them
+    from the output dataframes. This ensures there are no samples with read counts = 0, which
+    could lead to downstream errors in the pipeline, as well as that the sequencing depth
+    is high enough in each sample that saturation for OTU detection is reached.
+
+    Args:
+        dataframe (pandas dataframe):       The input DataFrame with taxonomic groups in the index.
+        sample_read_counts_cutoff (int):    A cutoff for minimal read counts in a sample to be included in downstream analysis.
+                                            Defaults to 1, and is min = 1.
+
+    Returns:
+        filtered_dataframe (pandas dataframe): The input DataFrame with taxonomic groups in the index,
+                                            without samples whose total read count is below the threshold.
+    """
+    logger.info('Filtering the merged dataframe for samples with read counts below the cutoff.')
+    
+    # If sample_read_counts_cutoff is lower than 1, set it to 1 to ensure that there are no samples
+    # with 0 read counts, which would cause MgPipe to crash
+    if sample_read_counts_cutoff < 1:
+        sample_read_counts_cutoff = 1
+    
+    read_counts = dataframe.sum()
+    
+    # Subset the dataframe only including those samples with read count higher than cutoff
+    samples_equal_or_higher_than_cutoff = [i for i, v in enumerate(read_counts) if v >= sample_read_counts_cutoff]
+    if samples_equal_or_higher_than_cutoff:
+        filtered_dataframe = dataframe.iloc[:, samples_equal_or_higher_than_cutoff]
+
+        # Identify which samples are below the threshold, therefore excluded & log them
+        samples_lower_than_cutoff = [i for i, v in enumerate(read_counts) if v < sample_read_counts_cutoff]
+        if samples_lower_than_cutoff:
+            logger_output = ', '.join(samples_lower_than_cutoff)
+            logger.info(f"Following {level} samples had a total read count below the cutoff & were removed: {logger_output}.")
+        else:
+            logger.info(f"No samples were below the read counts cutoff & removed.")
+    else:
+        raise too_low_read_counts_error()
+    
+    return filtered_dataframe
+
+
+class too_low_read_counts_error(Exception):
+    """
+    Exception raised in function 'filter_samples_low_read_counts' when all 
+    samples have read counts below the threshold and subsequent analysis can not be run.
+    """
+    def __init__(self, message="All samples have read counts below the sample_read_counts_cutoff (which defaults to 1, with min=1). Therefore, no subsequent analysis can be run."):
+        self.message = message
+        super().__init__(self.message)
 
 
 def check_presence_in_modelDatabase(renamed_dataframe, whichModelDatabase="full_db", userDatabase_path="", taxaSplit='; '):
@@ -260,18 +366,12 @@ def check_presence_in_modelDatabase(renamed_dataframe, whichModelDatabase="full_
 
         updatedModelDatabase_df = modelDatabase_df.drop('Resource', axis=1)
 
-    # Subset taxa for only those which contain species
-#     dfSubset_wSpecies = renamed_dataframe[renamed_dataframe.index.str.contains("s__")]
-
     # Split the indeces (taxa namings) by the taxaSplit, grab the species names & remove "s__" for model database comparison
     species = renamed_dataframe.index.str.split(taxaSplit).str[6].str.replace("s__", "", regex=False)
 
     # Find entries present in the model database
     present_mask = species.isin(updatedModelDatabase_df['Species'])
     present_df = renamed_dataframe.loc[present_mask]
-
-    # Add "pan" prefix to the index of the present DataFrame
-#     present_df.index = 'pan' + present_df.index
 
     # Find entries absent in the model database
     absent_mask = ~present_mask
@@ -290,7 +390,7 @@ def split_taxonomic_groups(df, flagLoneSpecies=False, taxaSplit='; '):
     Returns:
         dict: A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
     """
-    logger.info("Split taxonomic levels in seperate dataframes, per level.")
+    logger.info("Splitting taxonomic levels in seperate dataframes, one dataframe per level.")
 
     # Replace all level indicators in the taxa names in the df index
     df.index = df.index.str.replace(".__", "", regex=True)
@@ -305,13 +405,6 @@ def split_taxonomic_groups(df, flagLoneSpecies=False, taxaSplit='; '):
     # Add taxonomic levels as column names
     levels = ['Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species']
     taxonomic_split_df.columns = levels
-
-#     # Concatenate genus and species names if both are present, otherwise leave species column unchanged
-#     if flagLoneSpecies:
-#         taxonomic_split_df['Species'] = taxonomic_split_df.apply(
-#             lambda row: row['Genus'] + ' ' + row['Species'] if row['Species'] != '' else row['Species'],
-#             axis=1
-#     )
 
     # Concatenate the taxonomic_split_df and the abundance data from taxonomic_levels_df
     taxonomic_levels_df = pd.concat([taxonomic_split_df, taxonomic_levels_df.reset_index(drop=True)], axis=1)

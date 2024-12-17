@@ -126,15 +126,16 @@ def normalize_dataframe(dataframe, dfvalues_are_rel_abundances=False, cutoff=0.0
 
     # Apply cut-off for low abundance taxa
     rel_abundances_df[rel_abundances_df <= cutoff] = 0
-
-    # Identify which taxa in which samples are below cutoff threshold & set to 0, log them
-    entries_below_cutoff = rel_abundances_df[rel_abundances_df <= cutoff].stack().index.tolist()
-
-    if entries_below_cutoff:
-        logger.info(f"Taxa were below the cutoff & are listed in seperate log-file.")
-        logger_taxa_below_cutoff.info(f"Taxa whose rel.abundance was below the cutoff & therefore set to 0: {entries_below_cutoff}")
-    else:
-        logger.info(f"No taxa were below the cutoff.")
+    
+    if cutoff != 0:
+        # Identify which taxa in which samples are below cutoff threshold & set to 0, log them
+        entries_below_cutoff = rel_abundances_df[rel_abundances_df <= cutoff].stack().index.tolist()
+    
+        if entries_below_cutoff:
+            logger.info(f"Taxa were below the cutoff & are listed in seperate log-file.")
+            logger_taxa_below_cutoff.info(f"Taxa whose rel.abundance was below the cutoff & therefore set to 0: {entries_below_cutoff}")
+        else:
+            logger.info(f"No taxa were below the cutoff.")
     
     # Remove taxa which are non-abundant in any sample after cutoff has been applied from both normalized & original dataframe
     rel_abundances_df_afterCutoff = rel_abundances_df[(rel_abundances_df != 0).any(axis=1)]
@@ -144,64 +145,64 @@ def normalize_dataframe(dataframe, dfvalues_are_rel_abundances=False, cutoff=0.0
     return grouped_df_afterCutoff, rel_abundances_df_afterCutoff
 
 
-def normalize_dataframes(dataframes, dfvalues_are_rel_abundances=False, cutoff=None, pre_mapping_read_counts=None):
-    """
-    Normalize the taxonomic DataFrames by first grouping and summing rows with the same name,
-    and then calculating the relative abundances per taxa so that the sum of each sample (each column) is 1.
-    Optionally, a cut-off can be provided to filter out low abundance taxa before normalization.
-
-    Args:
-        dataframes (dict):          A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
-        cutoff (float, optional):   A cut-off value for filtering out low abundance taxa. Defaults to None.
-        pre_mapping_read_counts (int64 list, optional): A list containing per-sample total read counts pre-mapping,
-                                    allowing for taxa abundance normalization against pre-mapped total read counts.
-                                    Defaults to None.
-
-    Returns:
-        dict: A dictionary with keys as taxonomic levels and values as the normalized DataFrames.
-    """
-
-    normalized_dfs = {}
-
-    for level, df in dataframes.items():
-        # Group by index and sum the rows with the same name
-        grouped_df = df.groupby(df.index.name).sum()
-        
-        if dfvalues_are_rel_abundances == False:
-            # Normalize each column so that the sum of each column is 1 (either
-            # to pre-mapped total read counts, or to the subset read counts for 
-            # the dataset with taxa present in model database - needs to be done for modelling to work)
-            if pre_mapping_read_counts is not None:
-                read_counts = pre_mapping_read_counts[level].sum()
-            else:
-                read_counts = grouped_df.sum()
-            
-            # Normalize read counts to get relative abundances of taxa
-            rel_abundances_df = grouped_df.div(read_counts)
-        else:
-            rel_abundances_df = grouped_df
-  
-        # Optionally apply cut-off for low abundance taxa. Coincidentally
-        # also fixes empty cells to 0s.
-        if cutoff is not None:
-            rel_abundances_df[rel_abundances_df <= cutoff] = 0
-
-            # Identify which taxa in which samples are below cutoff threshold & set to 0, log them
-            entries_below_cutoff = rel_abundances_df[rel_abundances_df <= cutoff].stack().index.tolist()
-
-            if entries_below_cutoff:
-                logger.info(f"{level} taxa were below the cutoff & are listed in seperate log-file.")
-                logger_taxa_below_cutoff.info(f"{level} taxa whose rel.abundance was below the cutoff & therefore set to 0: {entries_below_cutoff}")
-            else:
-                logger.info(f"No {level} taxa were below the cutoff.")
-        
-        # Remove taxa which are non-abundant in any sample after cutoff has been applied
-        rel_abundances_df = rel_abundances_df[(rel_abundances_df != 0).any(axis=1)]
-            
-        # Add the normalized DataFrame to the dictionary
-        normalized_dfs[level] = rel_abundances_df
-        
-    return normalized_dfs
+# def normalize_dataframes(dataframes, dfvalues_are_rel_abundances=False, cutoff=None, pre_mapping_read_counts=None):
+#     """
+#     Normalize the taxonomic DataFrames by first grouping and summing rows with the same name,
+#     and then calculating the relative abundances per taxa so that the sum of each sample (each column) is 1.
+#     Optionally, a cut-off can be provided to filter out low abundance taxa before normalization.
+# 
+#     Args:
+#         dataframes (dict):          A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
+#         cutoff (float, optional):   A cut-off value for filtering out low abundance taxa. Defaults to None.
+#         pre_mapping_read_counts (int64 list, optional): A list containing per-sample total read counts pre-mapping,
+#                                     allowing for taxa abundance normalization against pre-mapped total read counts.
+#                                     Defaults to None.
+# 
+#     Returns:
+#         dict: A dictionary with keys as taxonomic levels and values as the normalized DataFrames.
+#     """
+# 
+#     normalized_dfs = {}
+# 
+#     for level, df in dataframes.items():
+#         # Group by index and sum the rows with the same name
+#         grouped_df = df.groupby(df.index.name).sum()
+#         
+#         if dfvalues_are_rel_abundances == False:
+#             # Normalize each column so that the sum of each column is 1 (either
+#             # to pre-mapped total read counts, or to the subset read counts for 
+#             # the dataset with taxa present in model database - needs to be done for modelling to work)
+#             if pre_mapping_read_counts is not None:
+#                 read_counts = pre_mapping_read_counts[level].sum()
+#             else:
+#                 read_counts = grouped_df.sum()
+#             
+#             # Normalize read counts to get relative abundances of taxa
+#             rel_abundances_df = grouped_df.div(read_counts)
+#         else:
+#             rel_abundances_df = grouped_df
+#   
+#         # Optionally apply cut-off for low abundance taxa. Coincidentally
+#         # also fixes empty cells to 0s.
+#         if cutoff is not None:
+#             rel_abundances_df[rel_abundances_df <= cutoff] = 0
+# 
+#             # Identify which taxa in which samples are below cutoff threshold & set to 0, log them
+#             entries_below_cutoff = rel_abundances_df[rel_abundances_df <= cutoff].stack().index.tolist()
+# 
+#             if entries_below_cutoff:
+#                 logger.info(f"{level} taxa were below the cutoff & are listed in seperate log-file.")
+#                 logger_taxa_below_cutoff.info(f"{level} taxa whose rel.abundance was below the cutoff & therefore set to 0: {entries_below_cutoff}")
+#             else:
+#                 logger.info(f"No {level} taxa were below the cutoff.")
+#         
+#         # Remove taxa which are non-abundant in any sample after cutoff has been applied
+#         rel_abundances_df = rel_abundances_df[(rel_abundances_df != 0).any(axis=1)]
+#             
+#         # Add the normalized DataFrame to the dictionary
+#         normalized_dfs[level] = rel_abundances_df
+#         
+#     return normalized_dfs
 
 
 def combine_metrics(metrics1, metrics2, df_type="metrics", dfvalues_are_rel_abundances=False):
