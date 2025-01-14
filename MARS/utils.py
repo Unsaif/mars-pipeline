@@ -361,7 +361,7 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                 level_output_path = os.path.join(group_output_path, level)
                 os.makedirs(level_output_path, exist_ok=True)
 
-                file_name = f"postMapping_present_abundanceMetrics_{level}.{output_format}"
+                file_name = f"mapped_abundanceMetrics_{level}.{output_format}"
                 file_path = os.path.join(level_output_path, file_name)
 
                 if output_format == "csv":
@@ -385,7 +385,7 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                 level_output_path = os.path.join(group_output_path, level)
                 os.makedirs(level_output_path, exist_ok=True)
 
-                file_name = f"postMapping_absent_abundanceMetrics_{level}.{output_format}"
+                file_name = f"unmapped_abundanceMetrics_{level}.{output_format}"
                 file_path = os.path.join(level_output_path, file_name)
 
                 if output_format == "csv":
@@ -427,7 +427,7 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                 level_output_path = os.path.join(group_output_path, level)
                 os.makedirs(level_output_path, exist_ok=True)
 
-                file_name = f"postMapping_present_brayCurtisDissimilarity_{level}.{output_format}"
+                file_name = f"mapped_brayCurtisDissimilarity_{level}.{output_format}"
                 file_path = os.path.join(level_output_path, file_name)
 
                 if output_format == "csv":
@@ -448,7 +448,7 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                 level_output_path = os.path.join(group_output_path, level)
                 os.makedirs(level_output_path, exist_ok=True)
 
-                file_name = f"postMapping_absent_brayCurtisDissimilarity_{level}.{output_format}"
+                file_name = f"unmapped_brayCurtisDissimilarity_{level}.{output_format}"
                 file_path = os.path.join(level_output_path, file_name)
 
                 if output_format == "csv":
@@ -538,7 +538,7 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                 level_output_path = os.path.join(group_output_path, level)
                 os.makedirs(level_output_path, exist_ok=True)
 
-                file_name = f"postMapping_abundanceMetrics_{level}_stratified.{output_format}"
+                file_name = f"mapped_abundanceMetrics_{level}_stratified.{output_format}"
                 file_path = os.path.join(level_output_path, file_name)
 
                 if output_format == "csv":
