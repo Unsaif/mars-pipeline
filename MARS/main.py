@@ -99,9 +99,9 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
 
     # Step 9: Store all result dataframes in a structure & save, if output-path is provided
     dataframe_groups = {'normalized_preMapped': preMapped_dataframes_normalized, 
-                        'normalized_presentPostMapped_adjForModelling': present_dataframes_adjForModelling,
-                        'normalized_presentPostMapped': present_dataframes_normalized,
-                        'normalized_absentPostMapped': absent_dataframes_normalized,
+                        'renormalized_mapped_forModelling': present_dataframes_adjForModelling,
+                        'normalized_mapped': present_dataframes_normalized,
+                        'normalized_unmapped': absent_dataframes_normalized,
                         'metrics': [combined_metrics, combined_summ_stats, \
                                     pre_mapping_abundance_metrics, \
                                    present_post_mapping_abundance_metrics, \
