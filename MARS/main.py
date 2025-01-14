@@ -20,12 +20,10 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
     # Optional Step: Remove potential clade extensions (e.g. "clade A"; " A") from taxa namings if set true
     if removeCladeExtensionsFromTaxa == True:
         preprocessed_dataframe = remove_clades_from_taxaNames(preprocessed_dataframe, taxaSplit=taxaSplit)
-#         preprocessed_dataframe = preprocessed_dataframe.set_index('Taxon')
     
     # Optional Step: Concatenate genus name with species epithet if both are present, otherwise leave species column unchanged
     if flagLoneSpecies:
         preprocessed_dataframe = concatenate_genus_and_species_names(preprocessed_dataframe, taxaSplit=taxaSplit)
-#         preprocessed_dataframe = preprocessed_dataframe.set_index('Taxon')
     
     # Step 2: Rename taxa according to resources/renaming.json to share same nomenclature as the model-database
     renamed_dataframe = rename_taxa(preprocessed_dataframe)
