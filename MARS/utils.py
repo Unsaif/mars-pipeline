@@ -89,8 +89,8 @@ def normalize_dataframe(dataframe, dfvalues_are_rel_abundances=False, cutoff=0.0
     Normalize a dataframe by first grouping and summing rows with the same name,
     and then calculating the relative abundances per taxa so that the sum of each sample (each column) is 1.
     Optionally, a cut-off can be provided to filter out low abundance taxa after normalization, as well as 
-    an additional dataframe containing total read counts for all samples of the input dataframe, to which when
-    provided will be normalized to instead.
+    an additional dataframe containing total read counts for all samples of the input dataframe, to which, in case
+    being provided, will be normalized to instead.
 
     Args:
         dataframe (pd.Dataframe):                           The input DataFrame with taxonomic groups in the index and read counts per sample.
@@ -113,7 +113,7 @@ def normalize_dataframe(dataframe, dfvalues_are_rel_abundances=False, cutoff=0.0
     if dfvalues_are_rel_abundances == False:
         # Normalize each column so that the sum of each column is 1 (either
         # to pre-mapped total read counts, or to the subset read counts for 
-        # the dataset with taxa present in model database - needs to be done for modelling to work)
+        # the dataset with taxa present in model database - which needs to be done for modelling to work)
         if dataframe_to_normalize_to is not None:
             read_counts = dataframe_to_normalize_to.sum()
         else:
@@ -139,70 +139,9 @@ def normalize_dataframe(dataframe, dfvalues_are_rel_abundances=False, cutoff=0.0
     
     # Remove taxa which are non-abundant in any sample after cutoff has been applied from both normalized & original dataframe
     rel_abundances_df_afterCutoff = rel_abundances_df[(rel_abundances_df != 0).any(axis=1)]
-    # ToDo: Account for case when there is rel abundances as input
     grouped_df_afterCutoff = grouped_df[(rel_abundances_df != 0).any(axis=1)]
         
     return grouped_df_afterCutoff, rel_abundances_df_afterCutoff
-
-
-# def normalize_dataframes(dataframes, dfvalues_are_rel_abundances=False, cutoff=None, pre_mapping_read_counts=None):
-#     """
-#     Normalize the taxonomic DataFrames by first grouping and summing rows with the same name,
-#     and then calculating the relative abundances per taxa so that the sum of each sample (each column) is 1.
-#     Optionally, a cut-off can be provided to filter out low abundance taxa before normalization.
-# 
-#     Args:
-#         dataframes (dict):          A dictionary with keys as taxonomic levels and values as the corresponding DataFrames.
-#         cutoff (float, optional):   A cut-off value for filtering out low abundance taxa. Defaults to None.
-#         pre_mapping_read_counts (int64 list, optional): A list containing per-sample total read counts pre-mapping,
-#                                     allowing for taxa abundance normalization against pre-mapped total read counts.
-#                                     Defaults to None.
-# 
-#     Returns:
-#         dict: A dictionary with keys as taxonomic levels and values as the normalized DataFrames.
-#     """
-# 
-#     normalized_dfs = {}
-# 
-#     for level, df in dataframes.items():
-#         # Group by index and sum the rows with the same name
-#         grouped_df = df.groupby(df.index.name).sum()
-#         
-#         if dfvalues_are_rel_abundances == False:
-#             # Normalize each column so that the sum of each column is 1 (either
-#             # to pre-mapped total read counts, or to the subset read counts for 
-#             # the dataset with taxa present in model database - needs to be done for modelling to work)
-#             if pre_mapping_read_counts is not None:
-#                 read_counts = pre_mapping_read_counts[level].sum()
-#             else:
-#                 read_counts = grouped_df.sum()
-#             
-#             # Normalize read counts to get relative abundances of taxa
-#             rel_abundances_df = grouped_df.div(read_counts)
-#         else:
-#             rel_abundances_df = grouped_df
-#   
-#         # Optionally apply cut-off for low abundance taxa. Coincidentally
-#         # also fixes empty cells to 0s.
-#         if cutoff is not None:
-#             rel_abundances_df[rel_abundances_df <= cutoff] = 0
-# 
-#             # Identify which taxa in which samples are below cutoff threshold & set to 0, log them
-#             entries_below_cutoff = rel_abundances_df[rel_abundances_df <= cutoff].stack().index.tolist()
-# 
-#             if entries_below_cutoff:
-#                 logger.info(f"{level} taxa were below the cutoff & are listed in seperate log-file.")
-#                 logger_taxa_below_cutoff.info(f"{level} taxa whose rel.abundance was below the cutoff & therefore set to 0: {entries_below_cutoff}")
-#             else:
-#                 logger.info(f"No {level} taxa were below the cutoff.")
-#         
-#         # Remove taxa which are non-abundant in any sample after cutoff has been applied
-#         rel_abundances_df = rel_abundances_df[(rel_abundances_df != 0).any(axis=1)]
-#             
-#         # Add the normalized DataFrame to the dictionary
-#         normalized_dfs[level] = rel_abundances_df
-#         
-#     return normalized_dfs
 
 
 def combine_metrics(metrics1, metrics2, df_type="metrics", dfvalues_are_rel_abundances=False):
@@ -228,7 +167,7 @@ def combine_metrics(metrics1, metrics2, df_type="metrics", dfvalues_are_rel_abun
             for metric_name in level_metrics_pre_mapping.keys():
                 
                 combined_metric = pd.DataFrame([level_metrics_pre_mapping[metric_name], level_metrics_post_mapping[metric_name]])
-                combined_metric.index = ['pre AGORA2 mapping', 'post AGORA2 mapping']
+                combined_metric.index = ['Pre mapping', 'Post mapping']
                 combined_level_metrics[metric_name] = combined_metric
 
             combined_metrics[level] = combined_level_metrics
