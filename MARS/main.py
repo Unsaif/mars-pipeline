@@ -116,6 +116,6 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
         logger.info(f'Saving output to {output_path}.')
         save_dataframes(dataframe_groups, output_path, output_format)
 
-        preprocessed_dataframe.to_csv(os.path.join(output_path,'preprocessedInput.csv'))
+        renamed_dataframe.to_csv(os.path.join(output_path,'preprocessedInput.csv'))
 
     return dataframe_groups
