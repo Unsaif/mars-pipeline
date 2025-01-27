@@ -6,7 +6,7 @@ import os
 import logging
 
 
-def process_microbial_abundances(input_file1, input_file2, output_path=None, cutoff=0.000001, output_format="csv", stratification_file=None, flagLoneSpecies=False, taxaSplit="; ", removeCladeExtensionsFromTaxa=True, whichModelDatabase="full_db", userDatabase_path="", sample_read_counts_cutoff=1):
+def process_microbial_abundances(input_file1, input_file2, output_path=None, cutoff=0.000001, output_format="csv", stratification_file=None, flagLoneSpecies=False, taxaSplit=";", removeCladeExtensionsFromTaxa=True, whichModelDatabase="full_db", userDatabase_path="", sample_read_counts_cutoff=1):
     # Initialize logger to generate a MARS log file    
     logger = setup_logger('main', os.path.join(output_path, 'MARS.log'))
     logger_taxa_below_cutoff = setup_logger('taxa_below_cutoff', os.path.join(output_path, 'MARS_taxaBelowCutoff.log'))
@@ -24,7 +24,7 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
     # Optional Step: Concatenate genus name with species epithet if both are present, otherwise leave species column unchanged
     if flagLoneSpecies:
         preprocessed_dataframe = concatenate_genus_and_species_names(preprocessed_dataframe, taxaSplit=taxaSplit)
-    
+
     # Step 2: Rename taxa according to resources/renaming.json to share same nomenclature as the model-database
     renamed_dataframe = rename_taxa(preprocessed_dataframe)
 
