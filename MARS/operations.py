@@ -8,7 +8,7 @@ import logging
 
 logger = logging.getLogger('main.operations')
 
-def load_input_and_preprocess(input_file1, input_file2=None):
+def load_input_and_preprocess(input_file1, input_file2=None, taxaSplit=';'):
     """
     Loads in input data, and preprocesses it (merging dataframes, handling NaN,
     targeting duplicate entries, subsetting for taxa with species information &
@@ -22,6 +22,7 @@ def load_input_and_preprocess(input_file1, input_file2=None):
         input_file1 (chars/string):     Path to additional input data (can be tab seperated, comma seperated, etc.),
                                         containing taxa names associated with input_file1.
                                         Defaults to None, only required if input_file1 does not contain taxa names.
+        taxaSplit (string):             Seperator by which input taxonomic levels are seperated.
 
     Returns:
         uniqueSpecies_dataframe (pd.dataframe):     A dataframe containing the preprocessed data from input_file1
@@ -42,9 +43,13 @@ def load_input_and_preprocess(input_file1, input_file2=None):
     # Sum read counts (or relative abundances) for same taxa in case there are duplicate entries
     uniqueTaxa_dataframe = merged_dataframe_woNaN.groupby(merged_dataframe_woNaN.index.name).sum()
 
+    # Add ["k__", "p__", "c__", "o__", "f__", "g__", "s__"] to taxa names to indicate taxonomic levels, if not present already
+    # & remove any leading whitespaces in front of taxa names per taxonomic level
+    uniqueTaxa_dataframe.index = uniqueTaxa_dataframe.index.map(lambda x: standardize_prefixes(x, taxaSplit=taxaSplit))
+
     # Get subset of dataframe which contains species
     uniqueSpecies_dataframe = uniqueTaxa_dataframe[uniqueTaxa_dataframe.index.str.contains("s__")]
-
+    
     # Replace potential "_" between Genus & epithet in species name by " "
     uniqueSpecies_dataframe.index = uniqueSpecies_dataframe.index.str.replace(r'(?<!_)_(?!_)', ' ', regex=True)
 
@@ -53,6 +58,36 @@ def load_input_and_preprocess(input_file1, input_file2=None):
     dfvalues_are_rel_abundances = check_df_absolute_or_relative_counts(uniqueSpecies_dataframe)
 
     return uniqueSpecies_dataframe, dfvalues_are_rel_abundances
+
+
+def standardize_prefixes(df_index, taxaSplit=';'):
+    """
+    Add ["k__", "p__", "c__", "o__", "f__", "g__", "s__"] to taxa names to 
+    indicate taxonomic levels, if not present already & remove any leading 
+    whitespaces in front of taxa names per taxonomic level.
+    """
+    if "s__" not in df_index:
+        logger.warning("No 's__' prefix found in species names of input table. Added prefixes assuming standard order of taxonomic level in index of input table (kingdom/domain, phylum, class, order, family, genus, species).")
+        prefixes = ["k__", "p__", "c__", "o__", "f__", "g__", "s__"]
+        parts = df_index.split(taxaSplit)
+        
+        # Remove leading whitespace from each part
+        parts = [part.lstrip() for part in parts]
+        
+        # Combine prefixes with cleaned parts
+        prefixed_parts = []
+        for prefix, part in zip(prefixes, parts):
+            if part:  # Only add prefix if part is not empty
+                prefixed_parts.append(f"{prefix}{part}")
+            else:
+                prefixed_parts.append("")  # Keep empty parts as empty strings
+        
+        return taxaSplit.join(prefixed_parts)
+    else:
+        # If 's__' is already present, just remove leading whitespace from each part
+        parts = df_index.split(taxaSplit)
+        cleaned_parts = [part.lstrip() for part in parts]
+        return taxaSplit.join(cleaned_parts)
 
 
 def check_df_absolute_or_relative_counts(df):
@@ -77,7 +112,7 @@ def check_df_absolute_or_relative_counts(df):
     return dfvalues_are_rel_abundances
 
 
-def remove_clades_from_taxaNames(preprocessed_dataframe, taxaSplit='; '):
+def remove_clades_from_taxaNames(preprocessed_dataframe, taxaSplit=';'):
     """ 
     Removes clade extensions from taxonomic names at any taxonomic level (if present)
     and sums counts of all clades of each taxa together, because most taxa with clade extensions
@@ -152,7 +187,7 @@ def remove_clades_from_taxaNames(preprocessed_dataframe, taxaSplit='; '):
     return grouped_df
 
 
-def concatenate_genus_and_species_names(preprocessed_dataframe, taxaSplit='; '):
+def concatenate_genus_and_species_names(preprocessed_dataframe, taxaSplit=';'):
     """ 
     Concatenates genus name with species epithet to form full species names
     and replaces the species epithet in the dataframe index with the full name
@@ -316,7 +351,7 @@ class too_low_read_counts_error(Exception):
         super().__init__(self.message)
 
 
-def check_presence_in_modelDatabase(renamed_dataframe, whichModelDatabase="full_db", userDatabase_path="", taxaSplit='; '):
+def check_presence_in_modelDatabase(renamed_dataframe, whichModelDatabase="full_db", userDatabase_path="", taxaSplit=';'):
     """
     Check if entries from the input DataFrame are in the model-database DataFrame under the same taxonomic level column.
     Split the input DataFrame into two DataFrames: present and absent. 
@@ -380,7 +415,7 @@ def check_presence_in_modelDatabase(renamed_dataframe, whichModelDatabase="full_
     return present_df, absent_df
 
 
-def split_taxonomic_groups(df, flagLoneSpecies=False, taxaSplit='; '):
+def split_taxonomic_groups(df, flagLoneSpecies=False, taxaSplit=';'):
     """
     Split the taxonomic groups in the index of the input DataFrame and create separate DataFrames for each taxonomic level.
 
