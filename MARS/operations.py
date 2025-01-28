@@ -13,7 +13,6 @@ def load_input_and_preprocess(input_file1, input_file2=None, taxaSplit=';'):
     Loads in input data, and preprocesses it (merging dataframes, handling NaN,
     targeting duplicate entries, subsetting for taxa with species information &
     checking whether input is in absolute read counts or already normalized to relative abundances).
-    ToDo: Include sanity checks on input data, if it is in correct table layout - has required information.
 
     Args:
         input_file1 (chars/string):     Path to input data (can be tab seperated, comma seperated, etc.),
@@ -31,8 +30,6 @@ def load_input_and_preprocess(input_file1, input_file2=None, taxaSplit=';'):
                                                     to relative abundances or not. Relevant for MARS subsequent steps.
     """
     logger.info("Loading input data & preprocessing it.")
-
-    # ToDo: Check whether input files are in correct format
 
     # Read in input file(s) & merge dataframes in case abundances plus taxa names are stored seperately
     merged_dataframe = merge_files(input_file1, input_file2)
@@ -63,11 +60,10 @@ def load_input_and_preprocess(input_file1, input_file2=None, taxaSplit=';'):
 def standardize_prefixes(df_index, taxaSplit=';'):
     """
     Add ["k__", "p__", "c__", "o__", "f__", "g__", "s__"] to taxa names to 
-    indicate taxonomic levels, if not present already & remove any leading 
-    whitespaces in front of taxa names per taxonomic level.
+    indicate taxonomic levels, if "s__" prefix is not present already. Any leading 
+    whitespaces in front of taxa names are also removed.
     """
     if "s__" not in df_index:
-        logger.warning("No 's__' prefix found in species names of input table. Added prefixes assuming standard order of taxonomic level in index of input table (kingdom/domain, phylum, class, order, family, genus, species).")
         prefixes = ["k__", "p__", "c__", "o__", "f__", "g__", "s__"]
         parts = df_index.split(taxaSplit)
         
@@ -87,6 +83,7 @@ def standardize_prefixes(df_index, taxaSplit=';'):
         # If 's__' is already present, just remove leading whitespace from each part
         parts = df_index.split(taxaSplit)
         cleaned_parts = [part.lstrip() for part in parts]
+
         return taxaSplit.join(cleaned_parts)
 
 
@@ -145,20 +142,21 @@ def remove_clades_from_taxaNames(preprocessed_dataframe, taxaSplit=';'):
             # Extract taxa names from the taxLevel column
             taxName = taxaSep[columnTracker].astype(str)
             
-            # Filter taxName with occourence of clade extensions to output in logger
-            clade_pattern = r'(?i)\s+(clade\s+)?[A-Z]$|(?i)\s+(clade\s+)?[A-Z]\s'        
-            taxNames_wClades = taxName.str.match(clade_pattern)
-            matched_taxNames = taxName.loc[taxNames_wClades].tolist()        
-            if matched_taxNames:
-                logger_output = ', '.join(matched_taxNames)
+            # Remove clades from taxa names using regex
+            original_taxName = taxName.copy()
+            taxName = taxName.str.replace(r'(?i)\s+(clade\s+)?[A-Z]$', '', regex=True)
+            taxName = taxName.str.replace(r'(?i)\s+(clade\s+)?[A-Z]\s', '', regex=True)
+        
+            # Find the taxa names that were changed
+            changed_taxa = original_taxName[original_taxName != taxName]
+            
+            # Log all taxa for which clades were found & removed, if any were found
+            if not changed_taxa.empty:
+                logger_output = ", ".join(changed_taxa.values)
                 logger.info(f"List of {taxLevel} taxa for which clade extension was found & removed: {logger_output}.")
             else:
                 logger.info(f"For {taxLevel} taxa no clade extension was found & removed.")
-    
-            # Clean taxa names using regex
-            taxName = taxName.str.replace(r'(?i)\s+(clade\s+)?[A-Z]$', '', regex=True)
-            taxName = taxName.str.replace(r'(?i)\s+(clade\s+)?[A-Z]\s', '', regex=True)
-                    
+                        
             # Update full taxa name (inlcuding all taxLevels) with cleaned taxa
             if taxLevel == 's__':
                 taxaUpdate = pd.concat([taxaSep.iloc[:, :columnTracker], taxName], axis=1)
@@ -169,8 +167,8 @@ def remove_clades_from_taxaNames(preprocessed_dataframe, taxaSplit=';'):
             # Replace original taxa with updated taxa names & update the merged_df
             taxa[taxa.str.contains(taxLevel)] = taxaUpdate.values
 
-        # Increase column to match corresponding taxonomic level for next for-loop iteration
-        columnTracker += 1
+            # Increase column to match corresponding taxonomic level for next for-loop iteration
+            columnTracker += 1
     
     # Replace the clade-containing taxa names by the updated taxa names without clades
     preprocessed_dataframe['Taxon'] = taxa
@@ -244,7 +242,7 @@ def concatenate_genus_and_species_names(preprocessed_dataframe, taxaSplit=';'):
 
 def rename_taxa(preprocessed_dataframe):
     """
-    Rename taxa in the merged dataframe by applying alterations, specific alterations, and homosynonyms.
+    Rename taxa in the preprocessed dataframe by applying alterations and homosynonyms.
 
     Args:
         preprocessed_dataframe (pandas dataframe):The preprocessed input DataFrame with taxonomic groups in the index.
@@ -299,11 +297,11 @@ def rename_taxa(preprocessed_dataframe):
 
 def filter_samples_low_read_counts(dataframe, sample_read_counts_cutoff=1):
     """
-    Filter the merged_dataframe (containing absolute read counts) 
-    for samples which contain less total read counts than a specified cutoff & exclude them
-    from the output dataframes. This ensures there are no samples with read counts = 0, which
+    Filters the renamed dataframe (in case it contains absolute read counts) 
+    for samples which contain less total read counts than a specified cutoff, with min.=1
+    & exclude them from the output dataframes. This ensures there are no samples with read counts = 0, which
     could lead to downstream errors in the pipeline, as well as that the sequencing depth
-    is high enough in each sample that saturation for OTU detection is reached.
+    is high enough in each sample that saturation for new species detection is reached.
 
     Args:
         dataframe (pandas dataframe):       The input DataFrame with taxonomic groups in the index.
@@ -319,22 +317,23 @@ def filter_samples_low_read_counts(dataframe, sample_read_counts_cutoff=1):
     # If sample_read_counts_cutoff is lower than 1, set it to 1 to ensure that there are no samples
     # with 0 read counts, which would cause MgPipe to crash
     if sample_read_counts_cutoff < 1:
+        logger.warning('The sample_read_counts_cutoff was tried to set below 1, and therefore replaced by 1, as this is the required minimum of read counts in a sample for Persephone to run properly.')
         sample_read_counts_cutoff = 1
     
     read_counts = dataframe.sum()
     
     # Subset the dataframe only including those samples with read count higher than cutoff
-    samples_equal_or_higher_than_cutoff = [i for i, v in enumerate(read_counts) if v >= sample_read_counts_cutoff]
-    if samples_equal_or_higher_than_cutoff:
-        filtered_dataframe = dataframe.iloc[:, samples_equal_or_higher_than_cutoff]
+    samples_equal_or_higher_than_cutoff = read_counts[read_counts >= sample_read_counts_cutoff].index
+    if len(samples_equal_or_higher_than_cutoff) > 0:
+        filtered_dataframe = dataframe[samples_equal_or_higher_than_cutoff]
 
-        # Identify which samples are below the threshold, therefore excluded & log them
-        samples_lower_than_cutoff = [i for i, v in enumerate(read_counts) if v < sample_read_counts_cutoff]
-        if samples_lower_than_cutoff:
+        # Log which samples have a total read count below the cutoff and are therefore removed
+        samples_lower_than_cutoff = read_counts[read_counts < sample_read_counts_cutoff].index
+        if len(samples_lower_than_cutoff) > 0:
             logger_output = ', '.join(samples_lower_than_cutoff)
-            logger.info(f"Following {level} samples had a total read count below the cutoff & were removed: {logger_output}.")
+            logger.info(f"Following samples had a total read count below the cutoff & were removed: {logger_output}.")
         else:
-            logger.info(f"No samples were below the read counts cutoff & removed.")
+            logger.info("No samples were below the read counts cutoff & removed.")
     else:
         raise too_low_read_counts_error()
     
