@@ -40,6 +40,9 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
     # Step 5: Check for presence of input taxa in a specified model database (AGORA2, APOLLO, 
     # combination of both or user-defined)
     present_dataframe, absent_dataframe = check_presence_in_modelDatabase(dataframe_afterCutoff, whichModelDatabase=whichModelDatabase, userDatabase_path=userDatabase_path, taxaSplit=taxaSplit)
+    if present_dataframe.empty:
+        logger.critical('No species from the input data were found & could be mapped to the reconstruction database. Led to termination of code execution with ValueError.')
+        raise ValueError("No species from the input data were found & could be mapped to the reconstruction database.")
 
     # Step 6.1: Normalize present_dataframe & absent_dataframe (with cutoff = 0,
     # because cutoff was already applied on dataframe_afterCutoff)

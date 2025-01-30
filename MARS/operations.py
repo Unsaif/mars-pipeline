@@ -43,9 +43,12 @@ def load_input_and_preprocess(input_file1, input_file2=None, taxaSplit=';'):
     # Add ["k__", "p__", "c__", "o__", "f__", "g__", "s__"] to taxa names to indicate taxonomic levels, if not present already
     # & remove any leading whitespaces in front of taxa names per taxonomic level
     uniqueTaxa_dataframe.index = uniqueTaxa_dataframe.index.map(lambda x: standardize_prefixes(x, taxaSplit=taxaSplit))
+    
+    # Remove rows/taxa from dataframe which do not contain species level information (& turned None in previous step)
+    uniqueSpecies_dataframe = uniqueTaxa_dataframe[uniqueTaxa_dataframe.index.notnull()]
 
-    # Get subset of dataframe which contains species
-    uniqueSpecies_dataframe = uniqueTaxa_dataframe[uniqueTaxa_dataframe.index.str.contains("s__")]
+    if uniqueSpecies_dataframe.empty:
+        raise ValueError("Either no species present in input data or taxonomic level indication in naming does not follow MARS convention. If so, please adapt the taxa naming according to the template or guidance from the tutorials.")
     
     # Replace potential "_" between Genus & epithet in species name by " "
     uniqueSpecies_dataframe.index = uniqueSpecies_dataframe.index.str.replace(r'(?<!_)_(?!_)', ' ', regex=True)
@@ -60,13 +63,20 @@ def load_input_and_preprocess(input_file1, input_file2=None, taxaSplit=';'):
 def standardize_prefixes(df_index, taxaSplit=';'):
     """
     Add ["k__", "p__", "c__", "o__", "f__", "g__", "s__"] to taxa names to 
-    indicate taxonomic levels, if "s__" prefix is not present already. Any leading 
-    whitespaces in front of taxa names are also removed.
+    indicate taxonomic levels, if "s__" prefix is not present already. If "s__"
+    is present, reorder the taxonomic levels which are present, into standard order
+    from highest taxonomic level (kingdom) to lowest (species) to have a standard format
+    for subsequent MARS steps & replaces "d__" by "k__".
+    Any leading whitespaces in front of taxa names are also removed.
     """
-    if "s__" not in df_index:
-        prefixes = ["k__", "p__", "c__", "o__", "f__", "g__", "s__"]
-        parts = df_index.split(taxaSplit)
-        
+    prefixes = ["k__", "p__", "c__", "o__", "f__", "g__", "s__"]
+    parts = df_index.split(taxaSplit)
+
+    # Replace "d__" with "k__" in the input
+    df_index = df_index.replace("d__", "k__")
+    parts = [part.replace("d__", "k__") for part in parts]
+
+    if "s__" not in df_index and len(parts) == 7:
         # Remove leading whitespace from each part
         parts = [part.lstrip() for part in parts]
         
@@ -77,14 +87,28 @@ def standardize_prefixes(df_index, taxaSplit=';'):
                 prefixed_parts.append(f"{prefix}{part}")
             else:
                 prefixed_parts.append("")  # Keep empty parts as empty strings
-        
-        return taxaSplit.join(prefixed_parts)
-    else:
-        # If 's__' is already present, just remove leading whitespace from each part
-        parts = df_index.split(taxaSplit)
+        modified_taxaNames = taxaSplit.join(prefixed_parts)
+
+        return modified_taxaNames
+    elif "s__" in df_index:
+        # If 's__' is already present, remove leading whitespace from each part
         cleaned_parts = [part.lstrip() for part in parts]
 
-        return taxaSplit.join(cleaned_parts)
+        # Create a dictionary to store parts by their prefix
+        sorted_parts = {prefix: "" for prefix in prefixes}
+        
+        # Assign parts to their corresponding prefixes
+        for part in cleaned_parts:
+            for prefix in sorted_parts.keys():
+                if part.startswith(prefix):
+                    sorted_parts[prefix] = part
+                    break
+        
+        modified_taxaNames = taxaSplit.join(sorted_parts[prefix] for prefix in prefixes if sorted_parts[prefix])
+        
+        return modified_taxaNames
+    else:
+        return None
 
 
 def check_df_absolute_or_relative_counts(df):
@@ -129,9 +153,9 @@ def remove_clades_from_taxaNames(preprocessed_dataframe, taxaSplit=';'):
     taxa = preprocessed_dataframe['Taxon']
     
     # Abbreviations for all taxonomic levels
-    taxUnitAbbreviations = ['p__', 'c__', 'o__', 'f__', 'g__', 's__']
+    taxUnitAbbreviations = ['k__', 'p__', 'c__', 'o__', 'f__', 'g__', 's__']
     # Specifies the column for the current taxonomic level from the split name (increases by 1 with each for-loop iteration)
-    columnTracker = 1
+    columnTracker = 0
 
     for taxLevel in taxUnitAbbreviations:
         # Filter taxa that contain taxLevel & split the strings by the specified taxaSplit
@@ -207,10 +231,14 @@ def concatenate_genus_and_species_names(preprocessed_dataframe, taxaSplit=';'):
     taxa_wSpecies = taxa[taxa.str.contains('s__')]
     if len(taxa_wSpecies) > 0:
         taxaSep = taxa_wSpecies.str.split(taxaSplit, expand=True)
+        
+        # Get number of columns in taxaSep to identify number of taxonomic level present 
+        # (used to find position of genus & species in taxaSep)
+        numTaxLevels = taxaSep.shape[1]
     
         # Extract genus name & species epithet
-        genusName = taxaSep[5].astype(str)
-        speciesName = taxaSep[6].astype(str)
+        genusName = taxaSep[numTaxLevels-2].astype(str)
+        speciesName = taxaSep[numTaxLevels-1].astype(str)
 
         genusName = genusName.str.replace('g__', '')
         speciesName = speciesName.str.replace('s__', '')
@@ -219,7 +247,7 @@ def concatenate_genus_and_species_names(preprocessed_dataframe, taxaSplit=';'):
         new_speciesName = 's__' + genusName + ' ' + speciesName
 
         # Update full taxa name (inlcuding all taxLevels) with cleaned taxa
-        taxaUpdate = pd.concat([taxaSep.iloc[:, :6], new_speciesName], axis=1)
+        taxaUpdate = pd.concat([taxaSep.iloc[:, :numTaxLevels-1], new_speciesName], axis=1)
         taxaUpdate = taxaUpdate.apply(lambda x: taxaSplit.join(x.astype(str)), axis=1)
     
         # Replace original taxa with updated taxa names & update the merged_df
@@ -400,7 +428,7 @@ def check_presence_in_modelDatabase(renamed_dataframe, whichModelDatabase="full_
         updatedModelDatabase_df = modelDatabase_df.drop('Resource', axis=1)
 
     # Split the indeces (taxa namings) by the taxaSplit, grab the species names & remove "s__" for model database comparison
-    species = renamed_dataframe.index.str.split(taxaSplit).str[6].str.replace("s__", "", regex=False)
+    species = renamed_dataframe.index.str.split(taxaSplit).str[-1].str.replace("s__", "", regex=False)
 
     # Find entries present in the model database
     present_mask = species.isin(updatedModelDatabase_df['Species'])
@@ -425,29 +453,51 @@ def split_taxonomic_groups(df, flagLoneSpecies=False, taxaSplit=';'):
     """
     logger.info("Splitting taxonomic levels in seperate dataframes, one dataframe per level.")
 
-    # Replace all level indicators in the taxa names in the df index
-    df.index = df.index.str.replace(".__", "", regex=True)
+    # Define the mapping of prefixes to full taxonomic level names
+    prefix_to_level = {
+        'k': 'Kingdom',
+        'p': 'Phylum',
+        'c': 'Class',
+        'o': 'Order',
+        'f': 'Family',
+        'g': 'Genus',
+        's': 'Species'
+    }
+    
+    # Split the index column into separate columns for each taxonomic level
+    taxonomic_split_df = df.index.str.split(taxaSplit, expand=True)
 
-    # Split the index column into separate columns for each taxonomic level, stored in a seperate DataFrame
-    taxonomic_levels_df = df 
-    taxonomic_split_df = taxonomic_levels_df.index.str.split(taxaSplit, expand=True).to_frame().reset_index(drop=True)
-
+    # Convert taxonomic_split_df to DataFrame
+    taxonomic_split_df = taxonomic_split_df.to_frame()
+    
+    # Determine which levels are present in the data
+    present_levels = []
+    for col in taxonomic_split_df.columns:
+        # Get the first character of the prefix (without "__")
+        prefix = taxonomic_split_df[col].str[:1].iloc[0]
+        if prefix in prefix_to_level:
+            present_levels.append(prefix_to_level[prefix])
+            # Remove the full prefix (with "__") from the data
+            taxonomic_split_df[col] = taxonomic_split_df[col].str[3:]
+    
+    # Assign the determined levels as column names
+    taxonomic_split_df.columns = present_levels
+    
     # Replace NaN by empty strings
     taxonomic_split_df = taxonomic_split_df.fillna('')
-
-    # Add taxonomic levels as column names
-    levels = ['Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species']
-    taxonomic_split_df.columns = levels
+    
+    # Reset the index
+    taxonomic_split_df = taxonomic_split_df.reset_index(drop=True)
 
     # Concatenate the taxonomic_split_df and the abundance data from taxonomic_levels_df
-    taxonomic_levels_df = pd.concat([taxonomic_split_df, taxonomic_levels_df.reset_index(drop=True)], axis=1)
+    taxonomic_levels_df = pd.concat([taxonomic_split_df, df.reset_index(drop=True)], axis=1)
 
     # Initialize a dictionary to store DataFrames for each taxonomic level
     taxonomic_dfs = {}
 
-    # Iterate through the taxonomic levels and create a DataFrame for each level
-    for level in levels:
-        level_df = taxonomic_levels_df[[level] + list(taxonomic_levels_df.columns[len(levels):])]
+    # Iterate through the present taxonomic levels and create a DataFrame for each level
+    for level in present_levels:
+        level_df = taxonomic_levels_df[[level] + list(taxonomic_levels_df.columns[len(present_levels):])]
         level_df = level_df.rename(columns={level: 'Taxon'})
 
         # Set the 'Taxon' column as the index and remove rows with an empty string in the 'Taxon' column
