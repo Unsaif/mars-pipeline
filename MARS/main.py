@@ -15,7 +15,7 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
     
     # Run MARS
     # Step 1: Check input data & preprocess
-    [preprocessed_dataframe, dfvalues_are_rel_abundances] = load_input_and_preprocess(input_file1, input_file2)
+    [preprocessed_dataframe, dfvalues_are_rel_abundances] = load_input_and_preprocess(input_file1, input_file2, taxaSplit)
 
     # Optional Step: Remove potential clade extensions (e.g. "clade A"; " A") from taxa namings if set true
     if removeCladeExtensionsFromTaxa == True:
@@ -40,12 +40,15 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
     # Step 5: Check for presence of input taxa in a specified model database (AGORA2, APOLLO, 
     # combination of both or user-defined)
     present_dataframe, absent_dataframe = check_presence_in_modelDatabase(dataframe_afterCutoff, whichModelDatabase=whichModelDatabase, userDatabase_path=userDatabase_path, taxaSplit=taxaSplit)
+    if present_dataframe.empty:
+        logger.critical('No species from the input data were found & could be mapped to the reconstruction database. Led to termination of code execution with ValueError.')
+        raise ValueError("No species from the input data were found & could be mapped to the reconstruction database.")
 
     # Step 6.1: Normalize present_dataframe & absent_dataframe (with cutoff = 0,
     # because cutoff was already applied on dataframe_afterCutoff)
     logger.info('Normalizing the post-mapping dataframes (present & absent).')
-    [present_dataframe_afterCutoff, normalized_present_dataframe] = normalize_dataframe(present_dataframe, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=0, dataframe_to_normalize_to=renamed_dataframe)
-    [absent_dataframe_afterCutoff, normalized_absent_dataframe] = normalize_dataframe(absent_dataframe, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=0, dataframe_to_normalize_to=renamed_dataframe)
+    [present_dataframe_afterCutoff, normalized_present_dataframe] = normalize_dataframe(present_dataframe, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=0, dataframe_to_normalize_to=dataframe_afterCutoff)
+    [absent_dataframe_afterCutoff, normalized_absent_dataframe] = normalize_dataframe(absent_dataframe, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=0, dataframe_to_normalize_to=dataframe_afterCutoff)
     # Step 6.2: Additionally normalize present_dataframe to its own total read count to be valid input for modelling 
     # (with relative abundances of present species per sample summing to 1)
     [_, normalized_present_dataframe_adjForModelling] = normalize_dataframe(present_dataframe, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=0)
@@ -116,6 +119,7 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
         logger.info(f'Saving output to {output_path}.')
         save_dataframes(dataframe_groups, output_path, output_format)
 
-        renamed_dataframe.to_csv(os.path.join(output_path,'preprocessedInput.csv'))
+        renamed_dataframe.to_csv(os.path.join(output_path, 'preprocessedInput_afterRenaming.csv'), sep=',')
+
 
     return dataframe_groups
