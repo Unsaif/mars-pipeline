@@ -354,7 +354,6 @@ def check_presence_in_modelDatabase(renamed_dataframe, whichModelDatabase="full_
     """
     Check if entries from the input DataFrame are in the model-database DataFrame under the same taxonomic level column.
     Split the input DataFrame into two DataFrames: present and absent. 
-    Add "pan" prefix to the index of the present DataFrame if the taxonomic level is "Species".
 
     Args:
         renamed_dataframe (pandas dataframe):   The input DataFrame to be 

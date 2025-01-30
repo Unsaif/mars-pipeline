@@ -88,7 +88,7 @@ def normalize_dataframe(dataframe, dfvalues_are_rel_abundances=False, cutoff=0.0
     """
     Normalize a dataframe by first grouping and summing rows with the same name,
     and then calculating the relative abundances per taxa so that the sum of each sample (each column) is 1.
-    Optionally, a cut-off can be provided to filter out low abundance taxa after normalization, as well as 
+    Optionally, a cutoff can be provided to filter out low abundant taxa after normalization, as well as 
     an additional dataframe containing total read counts for all samples of the input dataframe, to which, in case
     being provided, will be normalized to instead.
 
@@ -125,21 +125,27 @@ def normalize_dataframe(dataframe, dfvalues_are_rel_abundances=False, cutoff=0.0
         rel_abundances_df = grouped_df
 
     # Apply cut-off for low abundance taxa
-    rel_abundances_df[rel_abundances_df <= cutoff] = 0
-    
     if cutoff != 0:
-        # Identify which taxa in which samples are below cutoff threshold & set to 0, log them
+        # Identify which taxa are below relative abundance cutoff threshold & set their read counts to 0
+        grouped_df[rel_abundances_df <= cutoff] = 0
+
+        # Remove taxa which are non-abundant in any sample after cutoff has been applied
+        grouped_df_afterCutoff = grouped_df[(grouped_df != 0).any(axis=1)]
+
+        # Renormalize the dataframe after cutoff was applied so that relative abundances per sample sum to 1
+        read_counts_afterCutoff = grouped_df_afterCutoff.sum()
+        rel_abundances_df_afterCutoff = grouped_df_afterCutoff.div(read_counts_afterCutoff)
+
+        # Log which taxa are below the cutoff in which samples and were set to 0
         entries_below_cutoff = rel_abundances_df[rel_abundances_df <= cutoff].stack().index.tolist()
-    
         if entries_below_cutoff:
             logger.info(f"Taxa were below the cutoff & are listed in seperate log-file.")
             logger_taxa_below_cutoff.info(f"Taxa whose rel.abundance was below the cutoff & therefore set to 0: {entries_below_cutoff}")
         else:
             logger.info(f"No taxa were below the cutoff.")
-    
-    # Remove taxa which are non-abundant in any sample after cutoff has been applied from both normalized & original dataframe
-    rel_abundances_df_afterCutoff = rel_abundances_df[(rel_abundances_df != 0).any(axis=1)]
-    grouped_df_afterCutoff = grouped_df[(rel_abundances_df != 0).any(axis=1)]
+    else:
+        grouped_df_afterCutoff = grouped_df
+        rel_abundances_df_afterCutoff = rel_abundances_df
         
     return grouped_df_afterCutoff, rel_abundances_df_afterCutoff
 
@@ -252,7 +258,7 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                 level_output_path = os.path.join(group_output_path, level)
                 os.makedirs(level_output_path, exist_ok=True)
 
-                file_name = f"summ_stats_{level}.{output_format}"
+                file_name = f"summary_statistics_{level}.{output_format}"
                 file_path = os.path.join(level_output_path, file_name)
 
                 if output_format == "csv":
@@ -429,7 +435,7 @@ def save_dataframes(dataframe_groups, output_path, output_format):
                 level_output_path = os.path.join(group_output_path, level)
                 os.makedirs(level_output_path, exist_ok=True)
 
-                file_name = f"summ_stats_{level}_stratified.{output_format}"
+                file_name = f"summary_statistics_{level}_stratified.{output_format}"
                 file_path = os.path.join(level_output_path, file_name)
 
                 if output_format == "csv":
