@@ -110,19 +110,16 @@ def normalize_dataframe(dataframe, dfvalues_are_rel_abundances=False, cutoff=0.0
     # Group by index and sum the rows with the same name
     grouped_df = dataframe.groupby(dataframe.index.name).sum()
     
-    if dfvalues_are_rel_abundances == False:
-        # Normalize each column so that the sum of each column is 1 (either
-        # to pre-mapped total read counts, or to the subset read counts for 
-        # the dataset with taxa present in model database - which needs to be done for modelling to work)
-        if dataframe_to_normalize_to is not None:
-            read_counts = dataframe_to_normalize_to.sum()
-        else:
-            read_counts = grouped_df.sum()
-        
-        # Normalize read counts to get relative abundances of taxa
-        rel_abundances_df = grouped_df.div(read_counts)
+    # Normalize each column so that the sum of each column is 1 (either
+    # to pre-mapped total read counts, or to the subset read counts for 
+    # the dataset with taxa present in model database - which needs to be done for modelling to work)
+    if dataframe_to_normalize_to is not None:
+        read_counts = dataframe_to_normalize_to.sum()
     else:
-        rel_abundances_df = grouped_df
+        read_counts = grouped_df.sum()
+    
+    # Normalize read counts to get relative abundances of taxa
+    rel_abundances_df = grouped_df.div(read_counts)
 
     # Apply cut-off for low abundance taxa
     if cutoff != 0:
