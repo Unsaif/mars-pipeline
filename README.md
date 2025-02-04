@@ -88,4 +88,5 @@ For support, please open an issue in the GitHub repository or contact ines.thiel
 - Tim Hulshof - Initial work on MARS and ANT
 - Bram Nap - Contributions 
 - Filippo Martinelli - Contributions
+- Jonas Widder - Contributions
 
