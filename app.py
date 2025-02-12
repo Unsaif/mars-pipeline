@@ -1,17 +1,17 @@
-# Import the necessary libraries
+# app.py
 import streamlit as st
 import pandas as pd
-from ANT.ant import ant
+import os
 from io import BytesIO
+from MARS.utils import normalize_dataframe, save_dataframes, combine_metrics, read_file_as_dataframe, merge_files
+from MARS.operations import load_input_and_preprocess, check_df_absolute_or_relative_counts, remove_clades_from_taxaNames, concatenate_genus_and_species_names, split_taxonomic_groups, rename_taxa, calculate_metrics, check_presence_in_modelDatabase, filter_samples_low_read_counts
+from ANT.ant import ant
 
 st.set_page_config(layout="wide")
 
-# streamlit_app.py
-
-from MARS.utils import read_file_as_dataframe, merge_files, normalize_dataframes, combine_metrics
-from MARS.operations import split_taxonomic_groups, rename_taxa, calculate_metrics, check_presence_in_agora2
-
+# --- Helper functions ---
 def convert_df(df, file_format, index=False):
+    """Converts a Pandas DataFrame to a specified file format for download."""
     if file_format == "xlsx":
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -23,9 +23,8 @@ def convert_df(df, file_format, index=False):
     else:
         return df.to_csv(index=index).encode("utf-8")
 
-
 def file_to_list(uploaded_file):
-    # Reads a file and returns the data as a list
+    """Reads a file and returns the data as a list.  Handles different file types."""
     if uploaded_file is not None:
         file_details = {
             "FileName": uploaded_file.name,
@@ -33,9 +32,9 @@ def file_to_list(uploaded_file):
             "FileSize": uploaded_file.size,
         }
         st.write(file_details)
-        
+
         if uploaded_file.type == "text/plain" or uploaded_file.type == "text/tab-separated-values":
-            # For txt files, we simply read each line into a list
+            # For txt files, read each line into a list
             bytes_data = uploaded_file.getvalue()
             str_data = bytes_data.decode("utf-8")
             lines = str_data.split("\n")
@@ -63,322 +62,218 @@ def file_to_list(uploaded_file):
             return None
     else:
         return None
-    
+
+# --- Streamlit app ---
 st.image("images/logo2.png", use_column_width=True)
 
 st.title("MARS")
-
 st.write("""
 """)
 
+# --- Input files ---
 col1, col2, col3, col4 = st.columns(4)
-uploaded_file1 = col1.file_uploader("Upload Taxonomy Table", type=['csv', 'tsv', 'txt', 'xlsx'])
-uploaded_file2 = col2.file_uploader("Upload Feature Table", type=['csv', 'tsv', 'txt', 'xlsx'])
-uploaded_file3 = col3.file_uploader("Upload Combined Table", type=['csv', 'tsv', 'txt', 'xlsx'])
+input_file1 = col1.file_uploader("Upload Taxonomy Table", type=['csv', 'tsv', 'txt', 'xlsx'])
+input_file2 = col2.file_uploader("Upload Feature Table", type=['csv', 'tsv', 'txt', 'xlsx'])
+input_file3 = col3.file_uploader("Upload Combined Table", type=['csv', 'tsv', 'txt', 'xlsx'])
 uploaded_resource_file = col4.file_uploader(
-    "(Optional) Upload your own resource file",
+    "(Optional) Upload your own resource file for ANT",
     type=["txt", "csv", "xlsx"],
-    )
+)
 
-# Sidebar for optional parameters
-st.sidebar.header("Optional Parameters")
+# --- Sidebar for additional parameters ---
+st.sidebar.header("Parameters")
+output_path = st.sidebar.text_input("Output Path (optional)", None)
 cutoff = st.sidebar.slider("Cutoff", 0.0, 100.0, 0.0)
 output_format = st.sidebar.radio("Output Format", ["csv", "txt", "xlsx"])
 stratification_file = st.sidebar.file_uploader("Stratification File", type=['csv', 'txt', 'xlsx'])
 skip_ant = st.sidebar.checkbox('Skip ANT')
 flagLoneSpecies = st.sidebar.checkbox('Genus name not present in the s__ taxonomic identifier?')
-taxaSplit = st.sidebar.text_input('Delimiter used to seperate taxonomic levels')
+taxaSplit = st.sidebar.text_input('Delimiter used to seperate taxonomic levels', ';')
+removeCladeExtensionsFromTaxa = st.sidebar.checkbox('Remove Clade Extensions from Taxa Names', True)
+sample_read_counts_cutoff = st.sidebar.number_input("Sample Read Counts Cutoff", min_value=1, value=1)
+whichModelDatabase = st.sidebar.selectbox("Model Database", ["full_db", "AGORA2", "APOLLO", "user_db"], index=0)
+userDatabase_path = st.sidebar.text_input("User Database Path (if user_db is selected)", "")
 
-if (uploaded_file1 and uploaded_file2) or uploaded_file3:
 
-    # When the button is clicked, the function is executed
-    if st.button("Process Files"):
-        with st.spinner("Merging files..."):
-            if uploaded_file3:
-                merged_dataframe = read_file_as_dataframe(uploaded_file3, 0)
-                st.success("Files already merged!")
-            else:
-                merged_dataframe = merge_files(uploaded_file1, uploaded_file2)
-                st.success("Merging files: Success!")
+# --- Main Processing ---
+if (input_file1 and input_file2) or input_file3:
+    if st.button("Run MARS"):
+        try:
+            with st.spinner("Running MARS..."):
+                # Step 1: Check input data & preprocess
+                if input_file3:
+                    preprocessed_dataframe, dfvalues_are_rel_abundances = load_input_and_preprocess(input_file3, taxaSplit=taxaSplit)
+                    st.success("Input file loaded and preprocessed.")
+                else:
+                    preprocessed_dataframe, dfvalues_are_rel_abundances = load_input_and_preprocess(input_file1, input_file2, taxaSplit)
+                    st.success("Input files loaded and preprocessed.")
+                    
+                # Optional Step: Remove potential clade extensions (e.g. "clade A"; " A") from taxa namings if set true
+                if removeCladeExtensionsFromTaxa:
+                    preprocessed_dataframe = remove_clades_from_taxaNames(preprocessed_dataframe, taxaSplit=taxaSplit)
+                    st.info("Clade extensions removed.")
 
-        with st.spinner("Splitting taxonomic groups..."):
-            st.success(flagLoneSpecies)
-            taxonomic_dataframes = split_taxonomic_groups(merged_dataframe, flagLoneSpecies=flagLoneSpecies, taxaSplit=taxaSplit)
-        st.success("Splitting taxonomic groups: Success!")
+                # Optional Step: Concatenate genus name with species epithet if both are present, otherwise leave species column unchanged
+                if flagLoneSpecies:
+                    preprocessed_dataframe = concatenate_genus_and_species_names(preprocessed_dataframe, taxaSplit=taxaSplit)
+                    st.info("Genus and species names concatenated.")
 
-        with st.spinner("Renaming taxa..."):
-            renamed_dataframes = rename_taxa(taxonomic_dataframes)
-        st.success("Renaming taxa: Success!")
+                # Step 2: Rename taxa according to resources/renaming.json to share same nomenclature as the model-data
+                renamed_dataframe = rename_taxa(preprocessed_dataframe)
+                st.info("Taxa renamed.")
 
-        # ANT
-        if not skip_ant:
-            # Convert the uploaded file to a list
-            resource = file_to_list(uploaded_resource_file)
+                # Step 3: Filter out samples with too few total reads from subsequent analysis in case input is in absolute read counts (not relative abundance)
+                if not dfvalues_are_rel_abundances:
+                    renamed_dataframe = filter_samples_low_read_counts(renamed_dataframe, sample_read_counts_cutoff=sample_read_counts_cutoff)
+                    st.info(f"Samples with read counts below {sample_read_counts_cutoff} filtered out.")
 
-            # If the species list is not empty, find homosynonyms
 
-            st.divider()
+                # --- ANT Integration ---
+                def replace_homosynonyms(index):
+                    """
+                    Replace all occurrences of old substring with new substring in dataframe index.
+                    """
+                    for old, new in homosynonyms.items():
+                        index = index.replace(old, new)
+                    return index
 
-            species = list(renamed_dataframes['Species'].index)
-            species = [sub.replace('_', ' ') for sub in species]
+                if not skip_ant:
+                    resource = file_to_list(uploaded_resource_file)
+                    parts = renamed_dataframe.index.split(taxaSplit)
+                    species = [part for part in parts if "s__" in part]
+                    species = [sub.replace('_', ' ') for sub in species]
 
-            species_in_resource, homosynonyms, ncbi_tax_id, all_found_homosynoyms = ant(
-                species, resource
-            )
-            st.success("Done!")
-
-            st.divider()
-
-            # Create two columns
-            col1, col2 = st.columns(2)
-
-            col1.metric("Number of species found in resource", len(species_in_resource))
-            col2.metric("Number of homosynonyms found in resource", len(homosynonyms))
-
-            st.divider()
-
-            species_df = pd.DataFrame(species_in_resource, columns=["Species in Resource"])
-            homosynonyms_df = pd.DataFrame(
-                list(homosynonyms.items()),
-                columns=["Original Name", "Homosynonym in Resource"],
-            )
-            ncbi_tax_id_df = pd.DataFrame(
-                list(ncbi_tax_id.items()), columns=["Species", "NCBI Tax ID"]
-            )
-            all_found_homosynoyms_df = pd.DataFrame(
-                list(all_found_homosynoyms.items()),
-                columns=["Species", "All Found Homosynonymns"],
-            )
-
-            tab1, tab2, tab3, tab4 = st.tabs(
-                [
-                    "Species in Resource",
-                    "Homosynonyms in Resource",
-                    "NCBI Taxonomic IDs",
-                    "All Found Homosynonyms",
-                ]
-            )
-
-            with tab1:
-                col1, col2 = st.columns(2)
-                col1.dataframe(species_df, use_container_width=True)
-
-                # Convert the DataFrame to downloadable
-                species = convert_df(species_df, output_format)
-
-                # Create the download button
-                col2.download_button(
-                    label="Download Species",
-                    data=species,
-                    file_name=f"species.{output_format}",
-                    mime=f"text/{output_format}",
-                    disabled=species_df.empty,
-                )
-            with tab2:
-                col1, col2 = st.columns(2)
-                col1.dataframe(
-                    homosynonyms_df,
-                    hide_index=True,
-                    use_container_width=True,
-                )
-
-                # Convert the DataFrame to downloadable
-                homosynonyms_conv = convert_df(homosynonyms_df, output_format)
-
-                # Create the download button
-                col2.download_button(
-                    label="Download Homosynonyms",
-                    data=homosynonyms_conv,
-                    file_name=f"homosynonyms.{output_format}",
-                    mime=f"text/{output_format}",
-                    disabled=homosynonyms_df.empty,
-                )
-            with tab3:
-                col1, col2 = st.columns(2)
-                col1.dataframe(
-                    ncbi_tax_id_df,
-                    hide_index=False,
-                    use_container_width=True,
-                )
-
-                # Convert the DataFrame to downloadable
-                ncbi_tax_ids = convert_df(ncbi_tax_id_df, output_format)
-
-                # Create the download button
-                col2.download_button(
-                    label="Download NCBI Tax IDs",
-                    data=ncbi_tax_ids,
-                    file_name=f"ncbi_tax_ids.{output_format}",
-                    mime=f"text/{output_format}",
-                    disabled=ncbi_tax_id_df.empty,
-                )
-            with tab4:
-                col1, col2 = st.columns(2)
-                col1.dataframe(
-                    all_found_homosynoyms_df,
-                    hide_index=True,
-                    use_container_width=True,
-                )
-
-                # Convert the DataFrame to downloadable
-                all_found_homosynoyms = convert_df(all_found_homosynoyms_df, output_format)
-
-                # Create the download button
-                col2.download_button(
-                    label="Download All Found Homosynonyms",
-                    data=all_found_homosynoyms,
-                    file_name=f"all_found_homosynonyms.{output_format}",
-                    mime=f"text/{output_format}",
-                    disabled=all_found_homosynoyms_df.empty,
-                )
-
-            # rename any new found homosynonyms 
-            if homosynonyms:
-                with st.spinner("Renaming found homosynonyms..."):
-                    homosynonyms = {key.replace(' ', '_'): value.replace(' ', '_') for key, value in homosynonyms.items()}
-                    renamed_dataframes["Species"].rename(index=homosynonyms)
-                st.success("Renaming found homosynonyms: Success!")
-
-        with st.spinner("Checking presence in AGORA2..."):
-            present_dataframes, absent_dataframes = check_presence_in_agora2(renamed_dataframes)
-        st.success("Checking presence in AGORA2: Success!")
-
-        with st.spinner("Normalizing dataframes..."):
-            normalized_dataframes = normalize_dataframes(renamed_dataframes, cutoff=cutoff)
-            normalized_present_dataframes, normalized_absent_dataframes = normalize_dataframes(present_dataframes, cutoff=cutoff), normalize_dataframes(absent_dataframes, cutoff=cutoff)
-        st.success("Normalizing dataframes: Success!")
-
-        with st.spinner("Calculating metrics..."):
-            pre_agora2_check_metrics = calculate_metrics(renamed_dataframes)
-            post_agora2_check_metrics = calculate_metrics(present_dataframes)
-            combined_metrics = combine_metrics(pre_agora2_check_metrics, post_agora2_check_metrics)
-        st.success("Calculating metrics: Success!")
-
-        stratification_groups = {}
-        if stratification_file is not None:
-            with st.spinner("Processing stratification groups..."):
-                stratification = pd.read_csv(stratification_file)
-                for group in stratification["group"].unique():
-                    group_columns = list(stratification[stratification["group"] == group]["samples"])
-                    pre_group_metrics = calculate_metrics(renamed_dataframes, group=group_columns)
-                    post_group_metrics = calculate_metrics(present_dataframes, group=group_columns)
-                    combined_group_metrics = combine_metrics(pre_group_metrics, post_group_metrics)
-                    group_name = f"{group.lower()}_metrics"
-                    stratification_groups[group_name] = combined_group_metrics
-            st.success("Processing stratification groups: Success!")
-
-        dataframe_groups = {'normalized': normalized_dataframes, 
-                            'present': normalized_present_dataframes, 
-                            'absent': normalized_absent_dataframes,
-                            'metrics': combined_metrics
-                            }
-
-        dataframe_groups.update(stratification_groups)
-
-        endtab1, endtab2, endtab3, endtab4 = st.tabs(
-            [
-                "Normalized",
-                "Present",
-                "Absent",
-                "Metrics",
-            ]
-        )
-        levels = ['Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species']
-        with endtab1:
-
-            tabs = st.tabs(levels)
-            for i, (group, df) in enumerate(dataframe_groups['normalized'].items()):
-                
-                # Convert the DataFrame to downloadable
-                df_conv = convert_df(df, output_format, index=True)
-
-                with tabs[i]:
+                    species_in_resource, homosynonyms, ncbi_tax_id, all_found_homosynoyms = ant(
+                        species, resource
+                    )
+                    # Replace species names by their newly found homosynonyms 
+                    if homosynonyms:
+                        with st.spinner("Renaming found homosynonyms..."):
+                            homosynonyms = {key.replace(' ', '_'): value.replace(' ', '_') for key, value in homosynonyms.items()}
+                            renamed_dataframe.index = renamed_dataframe.index.map(replace_homosynonyms)
+                    st.success("Renaming with found homosynonyms: Success!")
+                    
+                    # Display ANT results
                     col1, col2 = st.columns(2)
-                    col1.dataframe(
-                        df,
-                        hide_index=False,
-                        use_container_width=True,
-                    )
+                    col1.metric("Number of species found in resource", len(species_in_resource))
+                    col2.metric("Number of homosynonyms found", len(homosynonyms))
 
-                    col2.download_button(
-                        label=f"Download {group}",
-                        data=df_conv,
-                        file_name=f"{group}_normalized.{output_format}",
-                        mime=f"text/{output_format}",
-                        disabled=df.empty,
-                        key=f'{group}_normalized'
-                    )
-        with endtab2:
+                    st.success("ANT analysis complete!")
+                else:
+                    st.info("ANT analysis skipped.")
 
-            tabs = st.tabs(levels)
-            for i, (group, df) in enumerate(dataframe_groups['present'].items()):
-                
-                # Convert the DataFrame to downloadable
-                df_conv = convert_df(df, output_format)
 
-                with tabs[i]:
-                    col1, col2 = st.columns(2)
-                    col1.dataframe(
-                        df,
-                        hide_index=False,
-                        use_container_width=True,
-                    )
+                # Step 4: Normalize & apply taxa relative abundance cutoff to renamed_dataframe
+                dataframe_afterCutoff, normalized_dataframe_afterCutoff = normalize_dataframe(renamed_dataframe, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=cutoff)
+                st.info("Data normalized and cutoff applied.")
 
-                    col2.download_button(
-                        label=f"Download {group}",
-                        data=df_conv,
-                        file_name=f"{group}_present.{output_format}",
-                        mime=f"text/{output_format}",
-                        disabled=df.empty,
-                        key=f'{group}_present'
-                    )
-        with endtab3:
+                # Step 5: Check for presence of input taxa in a specified model database (AGORA2, APOLLO, combination of both or user-defined)
+                present_dataframe, absent_dataframe = check_presence_in_modelDatabase(dataframe_afterCutoff, whichModelDatabase=whichModelDatabase, userDatabase_path=userDatabase_path, taxaSplit=taxaSplit)
+                if present_dataframe.empty:
+                    st.error("No species found in the specified model database. Please check your input and database selection.")
+                    raise ValueError("No species from the input data were found & could be mapped to the reconstruction database.")
+                st.info("Presence in model database checked.")
 
-            tabs = st.tabs(levels)
-            for i, (group, df) in enumerate(dataframe_groups['absent'].items()):
-                
-                # Convert the DataFrame to downloadable
-                df_conv = convert_df(df, output_format)
+                # Step 6.1: Normalize present_dataframe & absent_dataframe (with cutoff = 0, because cutoff was already applied on dataframe_afterCutoff)
+                present_dataframe_afterCutoff, normalized_present_dataframe = normalize_dataframe(present_dataframe, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=0, dataframe_to_normalize_to=dataframe_afterCutoff)
+                absent_dataframe_afterCutoff, normalized_absent_dataframe = normalize_dataframe(absent_dataframe, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=0, dataframe_to_normalize_to=dataframe_afterCutoff)
+                # Step 6.2: Additionally normalize present_dataframe to its own total read count to be valid input for modelling (with relative abundances of present species per sample summing to 1)
+                _, normalized_present_dataframe_adjForModelling = normalize_dataframe(present_dataframe, dfvalues_are_rel_abundances=dfvalues_are_rel_abundances, cutoff=0)
+                st.info("Dataframes normalized.")
 
-                with tabs[i]:
-                    col1, col2 = st.columns(2)
-                    col1.dataframe(
-                        df,
-                        hide_index=False,
-                        use_container_width=True,
-                    )
+                # Step 7.1: Seperate normalized dataframes by taxonomic levels (one df per taxonomic level, for both normalized & not-normalized dataframes)
+                preMapped_dataframes = split_taxonomic_groups(dataframe_afterCutoff, flagLoneSpecies=flagLoneSpecies, taxaSplit=taxaSplit)
+                present_dataframes = split_taxonomic_groups(present_dataframe_afterCutoff, flagLoneSpecies=flagLoneSpecies, taxaSplit=taxaSplit)
+                absent_dataframes = split_taxonomic_groups(absent_dataframe_afterCutoff, flagLoneSpecies=flagLoneSpecies, taxaSplit=taxaSplit)
+                preMapped_dataframes_normalized = split_taxonomic_groups(normalized_dataframe_afterCutoff, flagLoneSpecies=flagLoneSpecies, taxaSplit=taxaSplit)
+                present_dataframes_normalized = split_taxonomic_groups(normalized_present_dataframe, flagLoneSpecies=flagLoneSpecies, taxaSplit=taxaSplit)
+                absent_dataframes_normalized = split_taxonomic_groups(normalized_absent_dataframe, flagLoneSpecies=flagLoneSpecies, taxaSplit=taxaSplit)
+                present_dataframes_adjForModelling = split_taxonomic_groups(normalized_present_dataframe_adjForModelling, flagLoneSpecies=flagLoneSpecies, taxaSplit=taxaSplit)
+                st.info("Taxonomic groups split.")
 
-                    col2.download_button(
-                        label=f"Download {group}",
-                        data=df_conv,
-                        file_name=f"{group}_absent.{output_format}",
-                        mime=f"text/{output_format}",
-                        disabled=df.empty,
-                        key=f'{group}_absent'
-                    )
-        with endtab4:
+                # Step 7.2: Add "pan" prefix to species names (in index) of present_dataframes_adjForModelling (because pan-species reconstructions will be used in MgPipe)
+                present_dataframes_adjForModelling['Species'].index = 'pan' + present_dataframes_adjForModelling['Species'].index
+                st.info("\"pan\" prefix added to species names.")
 
-            metric_tabs = st.tabs(['Read Counts', 'Shannon Index', 'Firmicutes/Bacteroidetes Ratio'])
+                # Step 8.1: Calculate metrics on mapping coverage & microbiome composition)
+                pre_mapping_metrics, pre_mapping_abundance_metrics, pre_mapping_beta_diversity, pre_mapping_summ_stats = calculate_metrics(preMapped_dataframes_normalized, preMapped_dataframes)
+                present_post_mapping_metrics, present_post_mapping_abundance_metrics, present_post_mapping_beta_diversity, present_post_mapping_summ_stats = calculate_metrics(present_dataframes_normalized, present_dataframes)
+                absent_post_mapping_metrics, absent_post_mapping_abundance_metrics, absent_post_mapping_beta_diversity, absent_post_mapping_summ_stats = calculate_metrics(absent_dataframes_normalized, absent_dataframes)
+                st.info("Metrics calculated.")
 
-            for i, (group, metrics) in enumerate(dataframe_groups['metrics'].items()):
-                for j, (metric, df) in enumerate(metrics.items()):
-                    with metric_tabs[j]:
-                        metric_tabs[j].subheader(group)
-                        # Convert the DataFrame to downloadable
-                        df_conv = convert_df(df, output_format)
+                # Step 8.2: Combine pre- and postMapping information of metrices, where needed
+                combined_metrics = combine_metrics(pre_mapping_metrics, present_post_mapping_metrics, df_type="metrics", dfvalues_are_rel_abundances=dfvalues_are_rel_abundances)
+                combined_summ_stats = combine_metrics(pre_mapping_summ_stats, present_post_mapping_summ_stats, df_type="summ_stats", dfvalues_are_rel_abundances=dfvalues_are_rel_abundances)
+                st.info("Metrics combined.")
 
-                        col1, col2 = st.columns(2)
-                        col1.dataframe(
-                            df,
-                            hide_index=False,
-                            use_container_width=True,
-                        )
+                # Optional Step: If stratification groups are provided, stratify dataframe on these groups & calculate metrices on them too
+                stratification_groups = {}
+                stratification_groupnames = []
+                if stratification_file is not None:
+                    stratification = pd.read_csv(stratification_file)
+                    for group in stratification["group"].unique():
+                        # Select the columns for this group
+                        group_columns = list(stratification[stratification["group"] == group]["samples"])
+                        pre_group_metrics, pre_group_abundance_metrics, pre_group_summ_stats = calculate_metrics(preMapped_dataframes_normalized, preMapped_dataframes, group=group_columns)
+                        post_group_metrics, post_group_abundance_metrics, post_group_summ_stats = calculate_metrics(present_dataframes_normalized, present_dataframes, group=group_columns)
 
-                        col2.download_button(
-                            label=f"Download {metric}",
-                            data=df_conv,
-                            file_name=f"{group}_{metric}.{output_format}",
-                            mime=f"text/{output_format}",
-                            disabled=df.empty,
-                            key=f'{group}_{metric}'
-                        )
+                        combined_group_metrics = combine_metrics(pre_group_metrics, post_group_metrics, df_type="metrics")
+                        combined_group_summ_stats = combine_metrics(pre_group_summ_stats, post_group_summ_stats, df_type="summ_stats")
+                        group_name = f"{group.lower()}_stratified_metrics"
+                        stratification_groupnames.append(group_name)
+                        stratification_groups[group_name] = [combined_group_metrics, combined_group_summ_stats, \
+                                                            pre_group_abundance_metrics, post_group_abundance_metrics]
+                    st.info(f'Stratifying taxa dataframes using following groups: {stratification_groupnames}.')
+
+                # Step 9: Store all result dataframes in a structure & save, if output-path is provided
+                dataframe_groups = {'normalized_preMapped': preMapped_dataframes_normalized,
+                                    'renormalized_mapped_forModelling': present_dataframes_adjForModelling,
+                                    'normalized_mapped': present_dataframes_normalized,
+                                    'normalized_unmapped': absent_dataframes_normalized,
+                                    'metrics': [combined_metrics, combined_summ_stats, \
+                                                pre_mapping_abundance_metrics, \
+                                                present_post_mapping_abundance_metrics, \
+                                                absent_post_mapping_abundance_metrics, \
+                                                pre_mapping_beta_diversity, \
+                                                present_post_mapping_beta_diversity, \
+                                                absent_post_mapping_beta_diversity]}
+
+                dataframe_groups.update(stratification_groups)
+
+                # --- Output and Downloads ---
+                if output_path is not None:
+                    # Create the output directory if it doesn't exist
+                    if not os.path.exists(output_path):
+                        os.makedirs(output_path)
+                    save_dataframes(dataframe_groups, output_path, output_format)
+
+                    renamed_dataframe.to_csv(os.path.join(output_path, 'preprocessedInput_afterRenaming.csv'), sep=',')
+                    st.success(f"Output saved to {output_path} in {output_format} format.")
+
+                else:
+                    st.warning("No output path specified.  Displaying dataframes for download.")
+
+                    for name, data in dataframe_groups.items():
+                        st.subheader(f"{name}")
+                        if isinstance(data, list):  #metrics are stored in lists
+                            for df in data:
+                                st.dataframe(df)
+                                st.download_button(
+                                    label=f"Download {name} as {output_format}",
+                                    data=convert_df(df, output_format),
+                                    file_name=f"{name}.{output_format}",
+                                    mime=f"text/{output_format}" if output_format != "xlsx" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                )
+                        else:
+                            st.dataframe(data)
+                            st.download_button(
+                                label=f"Download {name} as {output_format}",
+                                data=convert_df(data, output_format),
+                                file_name=f"{name}.{output_format}",
+                                mime=f"text/{output_format}" if output_format != "xlsx" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            )
+
+            st.success("MARS analysis complete!")
+
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
