@@ -15,7 +15,7 @@ def process_microbial_abundances(input_file1, input_file2, output_path=None, cut
     
     # Run MARS
     # Step 1: Check input data & preprocess
-    [preprocessed_dataframe, dfvalues_are_rel_abundances] = load_input_and_preprocess(input_file1, input_file2, taxaSplit)
+    [preprocessed_dataframe, dfvalues_are_rel_abundances] = load_input_and_preprocess(input_file1, input_file2, taxaSplit=taxaSplit, input_is_df=False)
 
     # Optional Step: Remove potential clade extensions (e.g. "clade A"; " A") from taxa namings if set true
     if removeCladeExtensionsFromTaxa == True:
