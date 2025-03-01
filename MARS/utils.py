@@ -50,13 +50,15 @@ def read_file_as_dataframe(file_path, header=0, index_col=None):
         raise ValueError(f"Unsupported file type: {file_extension}")
 
 
-def merge_files(file_path1, file_path2):
+def merge_files(input1, input2, input_is_df=False):
     """
     Merge two files using pandas and return the merged DataFrame.
 
     Args:
-        file_path1 (str): The file path of the first input file.
-        file_path2 (str): The file path of the second input file.
+        input1 (str):         The file path of the first input file.
+        input2 (str):         The file path of the second input file.
+        input_is_df (boolean):    Boolean whether input file is a path to a file or (in case o the streamlit
+                                  app.py) a pandas dataframe.
 
     Returns:
         pd.DataFrame: The merged DataFrame.
@@ -64,12 +66,19 @@ def merge_files(file_path1, file_path2):
 
     # Read input files into pandas DataFrames  
     
-    if file_path2 == None:
-        df1 = read_file_as_dataframe(file_path1, header=0, index_col=0)
+    if input2 == None:
+        if input_is_df = False:
+            df1 = read_file_as_dataframe(input1, header=0, index_col=0)
+        else:
+            df1 = input1
         merged_df = df1
     else:
-        df1 = read_file_as_dataframe(file_path1, header=0, index_col=0)
-        df2 = read_file_as_dataframe(file_path2, header=1, index_col=0) 
+        if input_is_df = False:
+            df1 = read_file_as_dataframe(input1, header=0, index_col=0)
+            df2 = read_file_as_dataframe(input2, header=1, index_col=0)
+        else:
+            df1 = input1
+            df2 = input2
         # Merge DataFrames using their index values
         merged_df = pd.merge(df1, df2, left_index=True, right_index=True, how='inner')
         # Drop the 'Confidence' column
