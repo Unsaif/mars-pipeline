@@ -23,8 +23,8 @@ def convert_df(df, file_format, index=False):
     else:
         return df.to_csv(index=index).encode("utf-8")
 
-def file_to_list(uploaded_file):
-    """Reads a file and returns the data as a list.  Handles different file types."""
+def file_to_df(uploaded_file):
+    """Reads a file and returns the data as a pandas df.  Handles different file types."""
     if uploaded_file is not None:
         file_details = {
             "FileName": uploaded_file.name,
@@ -34,26 +34,18 @@ def file_to_list(uploaded_file):
         st.write(file_details)
 
         if uploaded_file.type == "text/plain" or uploaded_file.type == "text/tab-separated-values":
-            # For txt files, read each line into a list
-            bytes_data = uploaded_file.getvalue()
-            str_data = bytes_data.decode("utf-8")
-            lines = str_data.split("\n")
-            return [line for line in lines if line]
+            return pd.read_csv(uploaded_file, sep="\t")
         elif uploaded_file.type == "text/csv":
             try:
                 df = pd.read_csv(uploaded_file)
-                # Assuming the species names are in the first column
-                species_list = df.iloc[:, 0].tolist()
-                return species_list
+                return df
             except Exception as e:
                 st.write("Could not read file: ", e)
                 return None
         elif "spreadsheet" in uploaded_file.type:
             try:
                 df = pd.read_excel(uploaded_file)
-                # Assuming the species names are in the first column
-                species_list = df.iloc[:, 0].tolist()
-                return species_list
+                return df
             except Exception as e:
                 st.write("Could not read file: ", e)
                 return None
@@ -102,10 +94,13 @@ if (input_file1 and input_file2) or input_file3:
             with st.spinner("Running MARS..."):
                 # Step 1: Check input data & preprocess
                 if input_file3:
-                    preprocessed_dataframe, dfvalues_are_rel_abundances = load_input_and_preprocess(input_file3, taxaSplit=taxaSplit)
+                    input_df3 = file_to_df(input_file3)
+                    preprocessed_dataframe, dfvalues_are_rel_abundances = load_input_and_preprocess(input_df3, taxaSplit=taxaSplit, input_is_df=True)
                     st.success("Input file loaded and preprocessed.")
                 else:
-                    preprocessed_dataframe, dfvalues_are_rel_abundances = load_input_and_preprocess(input_file1, input_file2, taxaSplit)
+                    input_df1 = file_to_df(input_file1)
+                    input_df2 = file_to_df(input_file2)
+                    preprocessed_dataframe, dfvalues_are_rel_abundances = load_input_and_preprocess(input_df1, input_df2, taxaSplit=taxaSplit, input_is_df=True)
                     st.success("Input files loaded and preprocessed.")
                     
                 # Optional Step: Remove potential clade extensions (e.g. "clade A"; " A") from taxa namings if set true
@@ -138,7 +133,7 @@ if (input_file1 and input_file2) or input_file3:
                     return index
 
                 if not skip_ant:
-                    resource = file_to_list(uploaded_resource_file)
+                    resource = file_to_df(uploaded_resource_file)
                     parts = renamed_dataframe.index.split(taxaSplit)
                     species = [part for part in parts if "s__" in part]
                     species = [sub.replace('_', ' ') for sub in species]
@@ -251,7 +246,7 @@ if (input_file1 and input_file2) or input_file3:
                     st.success(f"Output saved to {output_path} in {output_format} format.")
 
                 else:
-                    st.warning("No output path specified.  Displaying dataframes for download.")
+                    st.warning("Displaying dataframes for download.")
 
                     for name, data in dataframe_groups.items():
                         st.subheader(f"{name}")
