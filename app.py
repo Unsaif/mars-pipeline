@@ -10,7 +10,7 @@ from ANT.ant import ant
 st.set_page_config(layout="wide")
 
 # --- Helper functions ---
-def convert_df(df, file_format, index=False):
+def convert_df(df, file_format, index=True):
     """Converts a Pandas DataFrame to a specified file format for download."""
     if file_format == "xlsx":
         output = BytesIO()
@@ -90,7 +90,7 @@ userDatabase_path = st.sidebar.text_input("User Database Path (if user_db is sel
 # --- Main Processing ---
 if (input_file1 and input_file2) or input_file3:
     if st.button("Run MARS"):
-        try:
+        # try:
             with st.spinner("Running MARS..."):
                 # Step 1: Check input data & preprocess
                 if input_file3:
@@ -134,7 +134,7 @@ if (input_file1 and input_file2) or input_file3:
 
                 if not skip_ant:
                     resource = file_to_df(uploaded_resource_file)
-                    parts = renamed_dataframe.index.split(taxaSplit)
+                    parts = renamed_dataframe.index.str.split(taxaSplit)
                     species = [part for part in parts if "s__" in part]
                     species = [sub.replace('_', ' ') for sub in species]
 
@@ -188,6 +188,7 @@ if (input_file1 and input_file2) or input_file3:
 
                 # Step 7.2: Add "pan" prefix to species names (in index) of present_dataframes_adjForModelling (because pan-species reconstructions will be used in MgPipe)
                 present_dataframes_adjForModelling['Species'].index = 'pan' + present_dataframes_adjForModelling['Species'].index
+                present_dataframes_adjForModelling['Species'].index = present_dataframes_adjForModelling['Species'].index.map(lambda x: str(x).replace(" ", "_"))
                 st.info("\"pan\" prefix added to species names.")
 
                 # Step 8.1: Calculate metrics on mapping coverage & microbiome composition)
@@ -250,25 +251,31 @@ if (input_file1 and input_file2) or input_file3:
 
                     for name, data in dataframe_groups.items():
                         st.subheader(f"{name}")
-                        if isinstance(data, list):  #metrics are stored in lists
-                            for df in data:
+                        if isinstance(data, list):
+                            continue
+                        #     for item in data:
+                        #         #metrics are stored in lists
+                        #         if isinstance(item, list):
+                        #             print(item)
+                        #         else:
+                        #             st.dataframe(item)
+                        #             st.download_button(
+                        #                 label=f"Download {name} as {output_format}",
+                        #                 data=convert_df(item, output_format),
+                        #                 file_name=f"{name}.{output_format}",
+                        #                 mime=f"text/{output_format}" if output_format != "xlsx" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        #             )
+                        else:
+                            for subname, df in data.items():
                                 st.dataframe(df)
                                 st.download_button(
-                                    label=f"Download {name} as {output_format}",
+                                    label=f"Download {subname} as {output_format}",
                                     data=convert_df(df, output_format),
-                                    file_name=f"{name}.{output_format}",
+                                    file_name=f"{name}_{subname}.{output_format}",
                                     mime=f"text/{output_format}" if output_format != "xlsx" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 )
-                        else:
-                            st.dataframe(data)
-                            st.download_button(
-                                label=f"Download {name} as {output_format}",
-                                data=convert_df(data, output_format),
-                                file_name=f"{name}.{output_format}",
-                                mime=f"text/{output_format}" if output_format != "xlsx" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            )
 
             st.success("MARS analysis complete!")
 
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
+        # except Exception as e:
+        #     st.error(f"An error occurred: {e}")

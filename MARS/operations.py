@@ -41,6 +41,7 @@ def load_input_and_preprocess(input_file1, input_file2=None, taxaSplit=';', inpu
 
     # Sum read counts (or relative abundances) for same taxa in case there are duplicate entries
     uniqueTaxa_dataframe = merged_dataframe_woNaN.groupby(merged_dataframe_woNaN.index.name).sum()
+    print(uniqueTaxa_dataframe)
 
     # Add ["k__", "p__", "c__", "o__", "f__", "g__", "s__"] to taxa names to indicate taxonomic levels, if not present already
     # & remove any leading whitespaces in front of taxa names per taxonomic level
