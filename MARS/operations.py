@@ -8,7 +8,7 @@ import logging
 
 logger = logging.getLogger('main.operations')
 
-def load_input_and_preprocess(input_file1, input_file2=None, taxaSplit=';'):
+def load_input_and_preprocess(input_file1, input_file2=None, taxaSplit=';', input_is_df=False):
     """
     Loads in input data, and preprocesses it (merging dataframes, handling NaN,
     targeting duplicate entries, subsetting for taxa with species information &
@@ -22,6 +22,8 @@ def load_input_and_preprocess(input_file1, input_file2=None, taxaSplit=';'):
                                         containing taxa names associated with input_file1.
                                         Defaults to None, only required if input_file1 does not contain taxa names.
         taxaSplit (string):             Seperator by which input taxonomic levels are seperated.
+        input_is_df (boolean):          Boolean whether input file is a path to a file or (in case o the streamlit
+                                        app.py) a pandas dataframe.
 
     Returns:
         uniqueSpecies_dataframe (pd.dataframe):     A dataframe containing the preprocessed data from input_file1
@@ -32,13 +34,14 @@ def load_input_and_preprocess(input_file1, input_file2=None, taxaSplit=';'):
     logger.info("Loading input data & preprocessing it.")
 
     # Read in input file(s) & merge dataframes in case abundances plus taxa names are stored seperately
-    merged_dataframe = merge_files(input_file1, input_file2)
+    merged_dataframe = merge_files(input_file1, input_file2, input_is_df=input_is_df)
 
     # Replace NaN by 0
     merged_dataframe_woNaN = merged_dataframe.fillna(0)
 
     # Sum read counts (or relative abundances) for same taxa in case there are duplicate entries
     uniqueTaxa_dataframe = merged_dataframe_woNaN.groupby(merged_dataframe_woNaN.index.name).sum()
+    print(uniqueTaxa_dataframe)
 
     # Add ["k__", "p__", "c__", "o__", "f__", "g__", "s__"] to taxa names to indicate taxonomic levels, if not present already
     # & remove any leading whitespaces in front of taxa names per taxonomic level
