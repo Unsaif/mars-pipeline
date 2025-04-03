@@ -13,7 +13,7 @@ The tutorial on how to use the interface can be found here: `https://github.com/
 A version of MARS as a python function can be found here: `https://github.com/ThieleLab/MARS`. This version does not have the ANT functionality
 
 ## Installation
-To run the application on your local machine, you will need to have Python (3.9 or above) installed, along with the necessary libraries. Follow these steps to get started:
+To run the application on your local machine, you will need to have Python (3.9 tested) installed, along with the necessary libraries. Follow these steps to get started:
 
 1. Clone the repository: `git clone https://www.github.com/ThieleLAB/mars-pipeline`
 
