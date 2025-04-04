@@ -73,6 +73,7 @@ def merge_files(input1, input2, input_is_df=False):
             df1 = input1
 
         merged_df = df1
+        merged_df = merged_df.set_index('Taxon')
         
     else:
         if input_is_df == False:
@@ -92,7 +93,6 @@ def merge_files(input1, input2, input_is_df=False):
         # Reset the index and set the 'Taxon' column as the new index
         merged_df = merged_df.reset_index(drop=True).set_index('Taxon')
 
-    merged_df = merged_df.set_index('Taxon')
     return merged_df
 
 
