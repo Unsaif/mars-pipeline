@@ -1,3 +1,19 @@
+# MARS for Persephone
+
+To run MARS offline within Persephone please follow these instructions:
+
+If your computer has git (usually pre-installed for MacOS and Linux. For Windows one can install it with `https://gitforwindows.org/`)
+
+Open up the terminal and navigate to the desired location where you want to store the MARS repository.
+Enter
+`git clone https://github.com/ThieleLab/MARS`
+The MARS repository is now on your local device and can be used in Persephone.
+To update MARS open the terminal and navigate to the MARS location on your device. Enter
+`git pull`
+This updates the MARS repository with the latest updates.
+
+Alternatively if git is not available to you, you can download the entire repository manually from github and move it to the desired location on you local machine.
+
 # MARS Streamlit Application
 
 ## Overview
